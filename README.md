@@ -21,9 +21,7 @@ The platform supports three project types: **Instant Buy** (direct purchase with
 
 ```
 Network     : Stellar Testnet
-Contract    : EarnlyCoFundContract
-Language    : Rust (#![no_std])
-Location    : contracts/earnly-co-fund/src/lib.rs
+Contract    : CDAXXGA55Q6AXCAI6YHK575EFTQZW5C22R2OAJQI6C2OGHSA6LEN63VA
 ```
 
 ---
