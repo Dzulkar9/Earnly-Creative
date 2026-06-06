@@ -1,0 +1,723 @@
+@import "tailwindcss";
+
+@theme {
+  --color-indigo-550: #5a62f6;
+  --color-indigo-655: #3b37c4;
+  --color-indigo-650: #4338ca;
+  --color-indigo-750: #312e81;
+  --color-purple-650: #6d28d9;
+  --color-purple-750: #4c1d95;
+}
+
+:root {
+  --background: #09090b;
+  --foreground: #f4f4f5;
+  --card: #18181b;
+  --card-foreground: #f4f4f5;
+  --popover: #09090b;
+  --popover-foreground: #f4f4f5;
+  --primary: #6366f1;
+  --primary-foreground: #ffffff;
+  --secondary: #27272a;
+  --secondary-foreground: #fafafa;
+  --muted: #27272a;
+  --muted-foreground: #a1a1aa;
+  --accent: #3f3f46;
+  --accent-foreground: #fafafa;
+  --destructive: #ef4444;
+  --destructive-foreground: #fafafa;
+  --border: #27272a;
+  --input: #27272a;
+  --ring: #818cf8;
+  --radius: 0.75rem;
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  overflow-x: hidden;
+}
+
+/* Glassmorphism effects */
+.glass-card {
+  background: rgba(24, 24, 27, 0.65);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.glass-nav {
+  background: rgba(9, 9, 11, 0.75);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* Glowing buttons */
+.glow-primary {
+  box-shadow: 0 0 15px rgba(99, 102, 241, 0.4);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.glow-primary:hover {
+  box-shadow: 0 0 25px rgba(99, 102, 241, 0.7);
+  transform: translateY(-1px);
+}
+
+/* Customized backgrounds */
+.bg-radial-glow {
+  background-image: radial-gradient(circle at 50% -20%,
+      rgba(99, 102, 241, 0.15) 0%,
+      rgba(9, 9, 11, 0) 60%);
+}
+
+.bg-radial-purple {
+  background-image: radial-gradient(circle at 0% 100%,
+      rgba(168, 85, 247, 0.08) 0%,
+      rgba(9, 9, 11, 0) 50%);
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #09090b;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #27272a;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #3f3f46;
+}
+
+/* Pulsing text glow */
+.text-glow {
+  text-shadow: 0 0 10px rgba(99, 102, 241, 0.5);
+}
+
+/* Transition utility */
+.transition-all-300 {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Hide scrollbar utility */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Grid mesh pattern */
+.bg-grid-pattern {
+  background-size: 50px 50px;
+  background-image:
+    linear-gradient(to right, rgba(255, 255, 255, 0.012) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.012) 1px, transparent 1px);
+}
+
+/* Floating animation */
+@keyframes float {
+
+  0%,
+  100% {
+    transform: translateY(0px);
+  }
+
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+.animate-float {
+  animation: float 5s ease-in-out infinite;
+}
+
+/* Shimmer Sweep Animation */
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.shimmer-sweep {
+  position: relative;
+  overflow: hidden;
+}
+
+.shimmer-sweep::after {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  transform: translateX(-100%);
+  background-image: linear-gradient(90deg,
+      rgba(255, 255, 255, 0) 0%,
+      rgba(255, 255, 255, 0.02) 20%,
+      rgba(255, 255, 255, 0.08) 60%,
+      rgba(255, 255, 255, 0) 100%);
+  animation: shimmer 3s infinite;
+  content: '';
+}
+
+/* Pulse Glow */
+@keyframes pulse-glow {
+
+  0%,
+  100% {
+    opacity: 0.3;
+  }
+
+  50% {
+    opacity: 0.6;
+  }
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Interactive Card Hover Glow */
+.hover-glow-card {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.hover-glow-card:hover {
+  border-color: rgba(99, 102, 241, 0.25);
+  box-shadow: 0 10px 30px -10px rgba(99, 102, 241, 0.15);
+  transform: translateY(-2px);
+}
+
+/* Staggered reveal animation on load */
+@keyframes reveal-up {
+  0% {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-reveal-up {
+  animation: reveal-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Custom utility class fallbacks for Tailwind compiler */
+.bg-indigo-650 {
+  background-color: #4f46e5 !important;
+}
+
+.hover\:bg-indigo-750:hover {
+  background-color: #3730a3 !important;
+}
+
+.bg-indigo-650\/10 {
+  background-color: rgba(79, 70, 229, 0.1) !important;
+}
+
+.bg-indigo-600\/10 {
+  background-color: rgba(79, 70, 229, 0.1) !important;
+}
+
+.bg-purple-650 {
+  background-color: #7c3aed !important;
+}
+
+.hover\:bg-purple-750:hover {
+  background-color: #5b21b6 !important;
+}
+
+.bg-purple-650\/10 {
+  background-color: rgba(124, 58, 237, 0.1) !important;
+}
+
+.border-indigo-550\/35 {
+  border-color: rgba(99, 102, 241, 0.35) !important;
+}
+
+.bg-indigo-655 {
+  background-color: #4338ca !important;
+}
+
+.text-zinc-555 {
+  color: #71717a !important;
+}
+
+.bg-zinc-855 {
+  background-color: #27272a !important;
+}
+
+.border-zinc-855 {
+  border-color: #27272a !important;
+}
+
+/* Light Mode Theme Overrides */
+.light {
+  --background: #fcfcfd;
+  --foreground: #09090b;
+  --card: #ffffff;
+  --card-foreground: #09090b;
+  --popover: #ffffff;
+  --popover-foreground: #09090b;
+  --primary: #4f46e5;
+  --primary-foreground: #ffffff;
+  --secondary: #f4f4f5;
+  --secondary-foreground: #09090b;
+  --muted: #f4f4f5;
+  --muted-foreground: #71717a;
+  --accent: #f4f4f5;
+  --accent-foreground: #09090b;
+  --border: #e4e4e7;
+  --input: #e4e4e7;
+  --ring: #6366f1;
+}
+
+/* Light mode backgrounds and patterns override */
+.light.bg-radial-glow,
+.light .bg-radial-glow {
+  background-image: radial-gradient(circle at 50% -20%,
+      rgba(99, 102, 241, 0.05) 0%,
+      rgba(252, 252, 253, 0) 70%);
+}
+
+.light.bg-radial-purple,
+.light .bg-radial-purple {
+  background-image: radial-gradient(circle at 0% 100%,
+      rgba(168, 85, 247, 0.03) 0%,
+      rgba(252, 252, 253, 0) 50%);
+}
+
+.light.bg-grid-pattern,
+.light .bg-grid-pattern {
+  background-image:
+    linear-gradient(to right, rgba(9, 9, 11, 0.03) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(9, 9, 11, 0.03) 1px, transparent 1px);
+}
+
+/* Glassmorphism light mode styling */
+.light .glass-card,
+.light [class*="glass-card"] {
+  background: #ffffff !important;
+  background-image: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border-color: rgba(9, 9, 11, 0.08) !important;
+  box-shadow: 0 4px 16px -2px rgba(0, 0, 0, 0.03) !important;
+}
+
+/* Remove glass blur & translucency for stats/metrics cards in light mode */
+.light .bg-zinc-900\/35,
+.light .bg-zinc-900\/40,
+.light .bg-zinc-900\/50,
+.light .bg-zinc-950\/40,
+.light .bg-zinc-950\/50,
+.light [class*="backdrop-blur-md"],
+.light [class*="backdrop-blur-lg"] {
+  background-image: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  box-shadow: 0 4px 16px -2px rgba(0, 0, 0, 0.02) !important;
+  border: 1px solid rgba(9, 9, 11, 0.08) !important;
+}
+
+/* Remove glass gradients from card headers in light mode */
+.light [class*="bg-gradient-to-tr"][class*="indigo-950"],
+.light .h-28.bg-gradient-to-tr,
+.light .h-36.bg-gradient-to-tr {
+  background-color: #f4f4f5 !important;
+  background-image: none !important;
+  border-bottom-color: rgba(9, 9, 11, 0.08) !important;
+}
+
+.light .glass-nav {
+  background: rgba(255, 255, 255, 0.82);
+  border-bottom-color: rgba(9, 9, 11, 0.05);
+}
+
+/* Background classes overrides */
+.light .bg-zinc-950,
+.light .bg-zinc-950\/40,
+.light .bg-zinc-950\/50,
+.light .bg-zinc-950\/60,
+.light .bg-zinc-950\/70,
+.light .bg-zinc-950\/80 {
+  background-color: #fcfcfd !important;
+  color: #09090b !important;
+}
+
+.light .bg-zinc-900,
+.light .bg-zinc-900\/20,
+.light .bg-zinc-900\/30,
+.light .bg-zinc-900\/35,
+.light .bg-zinc-900\/40,
+.light .bg-zinc-900\/50,
+.light .bg-zinc-900\/60,
+.light .bg-zinc-900\/80 {
+  background-color: #ffffff !important;
+  color: #09090b !important;
+}
+
+.light .bg-zinc-950\/20 {
+  background-color: rgba(244, 244, 245, 0.5) !important;
+}
+
+.light .bg-zinc-800 {
+  background-color: #e4e4e7 !important;
+  color: #71717a !important;
+}
+
+.light .bg-zinc-850 {
+  background-color: #f4f4f5 !important;
+  color: #71717a !important;
+}
+
+.light .bg-indigo-950\/15 {
+  background-color: rgba(99, 102, 241, 0.05) !important;
+}
+
+.light .bg-indigo-950\/20 {
+  background-color: rgba(99, 102, 241, 0.08) !important;
+}
+
+.light .bg-gradient-to-br.from-indigo-950\/20 {
+  background-image: linear-gradient(to bottom right, rgba(99, 102, 241, 0.04), #ffffff) !important;
+  border-color: rgba(9, 9, 11, 0.08) !important;
+}
+
+.light [class*="from-indigo-950"],
+.light [class*="from-purple-950"],
+.light [class*="from-orange-950"],
+.light [class*="from-emerald-950"],
+.light [class*="from-fuchsia-950"] {
+  background-image: none !important;
+  background-color: #f4f4f5 !important;
+}
+
+/* Border overrides */
+.light .border-zinc-800,
+.light .border-zinc-850,
+.light .border-zinc-900,
+.light .border-zinc-800\/40,
+.light .border-zinc-800\/80,
+.light .border-zinc-850\/40,
+.light .border-zinc-850\/60,
+.light .border-zinc-850\/80,
+.light .border-zinc-900\/50,
+.light .border-zinc-900\/80,
+.light .border-white\/5,
+.light .border-white\/10,
+.light .border-white\/15 {
+  border-color: rgba(9, 9, 11, 0.08);
+}
+
+/* Text overrides */
+.light .text-zinc-100,
+.light .text-zinc-200,
+.light .text-zinc-300,
+.light .text-zinc-350,
+.light h1.text-white,
+.light h2.text-white,
+.light h3.text-white,
+.light h4.text-white,
+.light span.text-white,
+.light div.text-white,
+.light a.text-white,
+.light button.text-white,
+.light p.text-white,
+.light label.text-white,
+.light li.text-white,
+.light button[class*="text-white"],
+.light span[class*="text-white"],
+.light div[class*="text-white"],
+.light a[class*="text-white"],
+.light p[class*="text-white"] {
+  color: #09090b !important;
+}
+
+.light .text-zinc-400,
+.light .text-zinc-450,
+.light .text-zinc-500,
+.light .text-zinc-550 {
+  color: #52525b !important;
+}
+
+.light .hover\:text-white:hover {
+  color: #09090b !important;
+}
+
+/* Scrollbar light mode */
+.light ::-webkit-scrollbar-track {
+  background: #f4f4f5;
+}
+
+.light ::-webkit-scrollbar-thumb {
+  background: #d4d4d8;
+}
+
+.light ::-webkit-scrollbar-thumb:hover {
+  background: #a1a1aa;
+}
+
+/* Ensure buttons with solid backgrounds keep their white/readable color */
+.light .bg-indigo-600,
+.light .bg-indigo-600 *,
+.light .bg-indigo-650,
+.light .bg-indigo-650 *,
+.light .bg-emerald-500,
+.light .bg-emerald-500 *,
+.light .bg-emerald-600,
+.light .bg-emerald-600 *,
+.light .bg-purple-650,
+.light .bg-purple-650 *,
+.light .bg-purple-600,
+.light .bg-purple-600 *,
+.light .bg-rose-500,
+.light .bg-rose-500 *,
+.light button[class*="text-white"].bg-indigo-600,
+.light button[class*="text-white"].bg-indigo-650,
+.light button[class*="text-white"].bg-indigo-750,
+.light a[class*="text-white"].bg-indigo-600,
+.light a[class*="text-white"].bg-indigo-650,
+.light a[class*="text-white"].bg-indigo-750,
+.light button[class*="text-white"].bg-purple-650,
+.light button[class*="text-white"].bg-purple-600,
+.light a[class*="text-white"].bg-purple-650,
+.light a[class*="text-white"].bg-purple-600,
+.light button[class*="text-white"].bg-emerald-500,
+.light button[class*="text-white"].bg-emerald-600,
+.light a[class*="text-white"].bg-emerald-500,
+.light a[class*="text-white"].bg-emerald-600,
+.light button[class*="text-white"].bg-rose-500,
+.light a[class*="text-white"].bg-rose-500 {
+  color: #ffffff !important;
+}
+
+/* Ensure status text remains colored */
+.light .text-emerald-400,
+.light .text-emerald-450,
+.light .text-emerald-455,
+.light .text-emerald-500,
+.light .text-emerald-600 {
+  color: #059669 !important;
+}
+
+.light .text-indigo-400,
+.light .text-indigo-500 {
+  color: #4f46e5 !important;
+}
+
+.light .text-purple-400,
+.light .text-purple-500 {
+  color: #7c3aed !important;
+}
+
+.light .text-amber-500,
+.light .text-amber-600 {
+  color: #d97706 !important;
+}
+
+/* Light mode specific element adjustments */
+.light .bg-black\/45 {
+  background-color: rgba(9, 9, 11, 0.05) !important;
+  color: #52525b !important;
+  border-color: rgba(9, 9, 11, 0.08) !important;
+}
+
+.light .glass-nav a {
+  color: #71717a !important;
+  /* Inactive links dark gray by default */
+}
+
+.light .glass-nav a.text-white,
+.light .glass-nav a[class*="text-white"] {
+  color: #09090b !important;
+  /* Brand logo and active links */
+}
+
+.light .glass-nav a.bg-zinc-800 {
+  background-color: #e4e4e7 !important;
+  color: #09090b !important;
+}
+
+.light .glass-nav a.text-zinc-400:hover,
+.light .glass-nav a.hover\:bg-zinc-900:hover {
+  background-color: #f4f4f5 !important;
+  color: #09090b !important;
+}
+
+/* Dynamic live activity log ticker background */
+.light .bg-zinc-950\/60 {
+  background-color: rgba(255, 255, 255, 0.75) !important;
+}
+
+/* FAQ cards styling in light mode */
+.light .bg-zinc-900\/20 {
+  background-color: rgba(9, 9, 11, 0.03) !important;
+}
+
+.light .bg-zinc-900\/35 {
+  background-color: #ffffff !important;
+}
+
+.light .border-indigo-500\/35 {
+  border-color: rgba(99, 102, 241, 0.4) !important;
+}
+
+/* Freighter wallet simulation switcher adjustments */
+.light .bg-zinc-950\/40 {
+  background-color: #f4f4f5 !important;
+}
+
+.light .text-indigo-300 {
+  color: #4f46e5 !important;
+}
+
+.light .bg-indigo-600\/10 {
+  background-color: rgba(99, 102, 241, 0.1) !important;
+}
+
+/* Ambient backlight glow blobs adjustment */
+.light .bg-indigo-650\/10,
+.light .bg-indigo-600\/10 {
+  background-color: rgba(99, 102, 241, 0.04) !important;
+}
+
+.light .bg-purple-650\/10,
+.light .bg-purple-600\/10 {
+  background-color: rgba(168, 85, 247, 0.03) !important;
+}
+
+/* Secondary/outline button contrast fixes */
+.light button.bg-zinc-900,
+.light a[class*="bg-zinc-950"] {
+  background-color: #ffffff !important;
+  color: #09090b !important;
+  border: 1px solid rgba(9, 9, 11, 0.1) !important;
+}
+
+.light button.bg-zinc-900:hover,
+.light a[class*="bg-zinc-950"]:hover {
+  background-color: #f4f4f5 !important;
+  border-color: rgba(9, 9, 11, 0.15) !important;
+}
+
+/* ================================ */
+/* Mobile Responsive Enhancements   */
+/* ================================ */
+
+/* Safe-area insets for notched devices (iPhones, etc.) */
+@supports (padding: env(safe-area-inset-bottom)) {
+  body {
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+
+  footer {
+    padding-bottom: calc(env(safe-area-inset-bottom) + 1.5rem);
+  }
+}
+
+/* Reduce motion for accessibility */
+@media (prefers-reduced-motion: reduce) {
+
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .animate-spin,
+  .animate-pulse,
+  .animate-ping,
+  .animate-float,
+  .animate-pulse-glow,
+  .shimmer-sweep::after {
+    animation: none !important;
+  }
+}
+
+/* Prevent horizontal overflow on mobile */
+html,
+body {
+  max-width: 100vw;
+}
+
+/* Touch-friendly tap targets — minimum 44px on mobile */
+@media (max-width: 640px) {
+
+  button,
+  a,
+  select,
+  input[type="checkbox"],
+  input[type="radio"] {
+    min-height: 44px;
+  }
+
+  select {
+    min-height: 44px;
+  }
+}
+
+/* Fade-in animation */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Truncate long wallet addresses on mobile */
+.truncate-addr {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 120px;
+}
+
+@media (min-width: 640px) {
+  .truncate-addr {
+    max-width: 200px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .truncate-addr {
+    max-width: 320px;
+  }
+}
+
+/* Fix sticky header on iOS Safari */
+.glass-nav {
+  -webkit-transform: translateZ(0);
+}
+
+/* Improve scrollbar on mobile */
+@media (max-width: 640px) {
+  ::-webkit-scrollbar {
+    width: 4px;
+  }
+}
