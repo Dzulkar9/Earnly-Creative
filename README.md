@@ -1,6 +1,7 @@
 # 🎨 Earnly Creative
 
 **A Soroban-gated digital marketplace with crowdfund pool and milestone escrow, powered by Stellar.**
+https://earnly-creative.vercel.app/
 ---
 
 ## 📌 Project Description
