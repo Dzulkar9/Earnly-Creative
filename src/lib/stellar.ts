@@ -891,12 +891,12 @@ export async function connectWallet(): Promise<string | null> {
   }
 }
 
+const PROXY_BASE = '/api/rpc';
+
 export function getRpcServer(): rpc.Server {
   const net = getNetwork();
-  if (net === 'mainnet') {
-    return new rpc.Server('https://soroban.stellar.org');
-  }
-  return new rpc.Server('https://soroban-testnet.stellar.org');
+  const netParam = net === 'mainnet' ? 'mainnet' : 'testnet';
+  return new rpc.Server(`${PROXY_BASE}?network=${netParam}`, { allowHttp: true });
 }
 
 export function getNetworkPassphrase(): string {
