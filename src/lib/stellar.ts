@@ -913,8 +913,7 @@ export function getContractId(): string {
   }
   const net = getNetwork();
   if (net === 'mainnet') {
-    // Mainnet contract address placeholder
-    return 'CCW6TAJLC2CCP6RGSFB6E4S3WBRNXIKIB4C67672C42O7CCY4FEAG3OZ';
+    return 'CC7B2NCHNK5VWLEK6HF2WPQAZWDBPVBWZ7JZRV4OJQN4FJZNIUGLIEOQ';
   }
   return 'CDAXXGA55Q6AXCAI6YHK575EFTQZW5C22R2OAJQI6C2OGHSA6LEN63VA';
 }
@@ -925,8 +924,7 @@ export function getTokenContractId(): string {
   }
   const net = getNetwork();
   if (net === 'mainnet') {
-    // Real Stellar Mainnet USDC wrapper contract address (SAC ID for USDC)
-    return 'CCW6TAJLC2CCP6RGSFB6E4S3WBRNXIKIB4C67672C42O7CCY4FEAG3OZ';
+    return 'CC7B2NCHNK5VWLEK6HF2WPQAZWDBPVBWZ7JZRV4OJQN4FJZNIUGLIEOQ';
   }
   return 'CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC';
 }
