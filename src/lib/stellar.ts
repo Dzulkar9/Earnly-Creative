@@ -894,7 +894,7 @@ export async function connectWallet(): Promise<string | null> {
 export function getRpcServer(): rpc.Server {
   const net = getNetwork();
   if (net === 'mainnet') {
-    return new rpc.Server('https://soroban-rpc.stellar.org');
+    return new rpc.Server('https://soroban.stellar.org');
   }
   return new rpc.Server('https://soroban-testnet.stellar.org');
 }
