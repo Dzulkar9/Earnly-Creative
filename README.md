@@ -22,6 +22,10 @@ The platform supports three project types: **Instant Buy** (direct purchase with
 ```
 Network     : Stellar Testnet
 Contract    : CDAXXGA55Q6AXCAI6YHK575EFTQZW5C22R2OAJQI6C2OGHSA6LEN63VA
+
+Netwiork    : Main Net
+Contract    : CC7B2NCHNK5VWLEK6HF2WPQAZWDBPVBWZ7JZRV4OJQN4FJZNIUGLIEOQ
+
 ```
 
 ---
