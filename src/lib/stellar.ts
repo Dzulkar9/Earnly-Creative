@@ -895,8 +895,10 @@ const PROXY_BASE = '/api/rpc';
 
 export function getRpcServer(): rpc.Server {
   const net = getNetwork();
-  const netParam = net === 'mainnet' ? 'mainnet' : 'testnet';
-  return new rpc.Server(`${PROXY_BASE}?network=${netParam}`, { allowHttp: true });
+  if (net === 'mainnet') {
+    return new rpc.Server('https://mainnet.sorobanrpc.com');
+  }
+  return new rpc.Server('https://soroban-testnet.stellar.org');
 }
 
 export function getNetworkPassphrase(): string {
