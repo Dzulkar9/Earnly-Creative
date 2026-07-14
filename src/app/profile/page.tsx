@@ -88,7 +88,7 @@ export default function ProfilePage() {
   const [blockchainStates, setBlockchainStates] = useState<Record<number, CampaignState>>({});
   const [userPledges, setUserPledges] = useState<Record<number, number>>({});
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'backed-projects' | 'my-projects' | 'payout-options' | 'seller-verification' | 'transaction-history' | 'my-reviews' | 'admin-disputes' | 'admin-compliance'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'backed-projects' | 'my-projects' | 'seller-verification' | 'transaction-history' | 'my-reviews' | 'admin-disputes' | 'admin-compliance'>('dashboard');
   const [transactionPage, setTransactionPage] = useState(1);
   const [backedPage, setBackedPage] = useState(1);
   const [createdPage, setCreatedPage] = useState(1);
@@ -799,7 +799,7 @@ export default function ProfilePage() {
           <div className="flex flex-col md:flex-row items-center gap-5 w-full md:w-auto">
             {/* Avatar block */}
             <div className="relative group cursor-pointer w-20 h-20 shrink-0">
-              <div className="w-20 h-20 rounded-full bg-gradient-to-tr from-indigo-650 to-purple-650 flex items-center justify-center text-white font-black text-2xl border-2 border-zinc-800 shadow-md">
+              <div className="w-20 h-20 rounded-full bg-gradient-to-tr from-indigo-650 to-purple-650 flex items-center justify-center text-white font-black text-2xl border-2 border-zinc-800 shadow-md keep-white">
                 {userApplication?.realName ? userApplication.realName.replace('@', '').substring(0, 2).toUpperCase() : 'ME'}
               </div>
               <div className="absolute inset-0 bg-black/60 rounded-full opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
@@ -918,15 +918,6 @@ export default function ProfilePage() {
                       }`}
                   >
                     My Listing ({myCreatedProjects.length})
-                  </button>
-                  <button
-                    onClick={() => setActiveTab('payout-options')}
-                    className={`pb-3 text-xs sm:text-sm font-bold transition-all relative cursor-pointer ${activeTab === 'payout-options'
-                      ? 'text-white border-b-2 border-indigo-500'
-                      : 'text-zinc-500 hover:text-zinc-300'
-                      }`}
-                  >
-                    Payout Options
                   </button>
                   <button
                     onClick={() => setActiveTab('backed-projects')}
@@ -1224,21 +1215,10 @@ export default function ProfilePage() {
             )
           ) : activeTab === 'dashboard' ? (
             <div className="flex flex-col gap-6 w-full animate-fade-in font-sans">
-              {/* Withdrawal process warning banner */}
-              <div className="bg-amber-500/5 border border-amber-500/20 p-4 rounded-xl flex items-start gap-3 shadow-md">
-                <Clock className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
-                <div className="flex flex-col gap-0.5">
-                  <h4 className="text-xs font-bold text-amber-400">Withdrawal Process</h4>
-                  <p className="text-zinc-400 text-xs leading-relaxed">
-                    Please submit your withdrawal requests by 12PM noon (GMT+8) every Monday and Thursday. Any submissions after 12PM noon (GMT+8) will only get processed in the next cycle.
-                  </p>
-                </div>
-              </div>
-
               {/* Financial Overview Cards */}
               <div className="flex flex-col gap-3">
                 <h3 className="text-sm font-bold text-white">Overview</h3>
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   {/* On Going */}
                   <div className="bg-zinc-900/35 border border-zinc-800 p-5 rounded-2xl flex flex-col gap-2 shadow-lg">
                     <span className="text-xs text-zinc-550 font-bold uppercase tracking-wider">On Going</span>
@@ -1259,11 +1239,6 @@ export default function ProfilePage() {
                   <div className="bg-zinc-900/35 border border-zinc-800 p-5 rounded-2xl flex flex-col gap-2 shadow-lg">
                     <span className="text-xs text-zinc-550 font-bold uppercase tracking-wider">Balance</span>
                     <span className="text-2xl font-black text-emerald-400 font-mono">${Math.max(0, currentBalance - onHoldAmount).toFixed(2)}</span>
-                  </div>
-                  {/* Withdrawn */}
-                  <div className="bg-zinc-900/35 border border-zinc-800 p-5 rounded-2xl flex flex-col gap-2 shadow-lg">
-                    <span className="text-xs text-zinc-550 font-bold uppercase tracking-wider">Withdrawn</span>
-                    <span className="text-2xl font-black text-indigo-400 font-mono">${withdrawnFunds.toFixed(2)}</span>
                   </div>
                 </div>
               </div>
@@ -1951,52 +1926,6 @@ export default function ProfilePage() {
               )}
             </>
           )
-          ) : activeTab === 'payout-options' ? (
-            <div className="flex flex-col gap-6 w-full animate-fade-in font-sans">
-              <div className="rounded-2xl border border-zinc-800 p-6 flex flex-col gap-6 bg-zinc-950">
-                <div>
-                  <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
-                    <Coins className="w-5 h-5 text-indigo-400" /> Payout Configurations
-                  </h3>
-                  <p className="text-xs text-zinc-500 mt-1">
-                    Manage how your earnings are distributed and configure auto-withdrawal triggers.
-                  </p>
-                </div>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="flex flex-col gap-2">
-                    <label className="text-[10px] font-semibold text-zinc-500 uppercase">Payout Destination (USDC Wallet Address)</label>
-                    <input
-                      type="text"
-                      disabled
-                      value={walletAddress || 'No Wallet Connected'}
-                      className="bg-zinc-900 border border-zinc-850 rounded-lg p-2.5 text-zinc-450 text-xs font-mono select-all"
-                    />
-                  </div>
-                  <div className="flex flex-col gap-2">
-                    <label className="text-[10px] font-semibold text-zinc-500 uppercase">Minimum Payout Threshold</label>
-                    <select className="bg-zinc-900 border border-zinc-850 rounded-lg p-2.5 text-zinc-300 text-xs outline-none">
-                      <option>$10.00 USDC</option>
-                      <option>$50.00 USDC</option>
-                      <option>$100.00 USDC</option>
-                      <option>$500.00 USDC</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between border-t border-zinc-905 pt-4 mt-2">
-                  <div className="flex flex-col gap-0.5">
-                    <span className="text-xs font-bold text-white">Auto-Withdrawal on Payout Cycles</span>
-                    <span className="text-[10px] text-zinc-500">Automatically push balance to wallet on Mondays and Thursdays.</span>
-                  </div>
-                  <input type="checkbox" defaultChecked className="w-4 h-4 accent-indigo-650 cursor-pointer" />
-                </div>
-
-                <button onClick={() => alert('Payout settings saved successfully!')} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs py-2.5 px-4 rounded-lg self-start transition">
-                  Save Configurations
-                </button>
-              </div>
-            </div>
           ) : activeTab === 'my-reviews' ? (
             <div className="flex flex-col gap-6 w-full animate-fade-in font-sans">
               <div className="rounded-2xl border border-zinc-800 p-6 flex flex-col gap-6 bg-zinc-950">

@@ -470,6 +470,13 @@ body {
   background: #a1a1aa;
 }
 
+/* Keep-white utility to prevent light-mode black text override on badges, avatars, and solid cards */
+.light .keep-white,
+.light div.keep-white,
+.light span.keep-white {
+  color: #ffffff !important;
+}
+
 /* Ensure buttons with solid backgrounds keep their white/readable color */
 .light .bg-indigo-600,
 .light .bg-indigo-600 *,
