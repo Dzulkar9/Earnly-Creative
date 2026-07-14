@@ -155,8 +155,11 @@ export default function ProfilePage() {
         setBalances({ [activeAddr]: bal });
       }
 
-      const adminAddress = process.env.NEXT_PUBLIC_ADMIN_ADDRESS || 'GB_CREATOR_ADDRESS_STW_NORTHGATE';
-      const isUserAdmin = activeAddr === adminAddress || activeAddr === 'GB_CREATOR_ADDRESS_STW_NORTHGATE';
+      const adminAddress = (process.env.NEXT_PUBLIC_ADMIN_ADDRESS || 'GB_CREATOR_ADDRESS_STW_NORTHGATE').trim();
+      const isUserAdmin = !!activeAddr && (
+        activeAddr.trim().toLowerCase() === adminAddress.toLowerCase() ||
+        activeAddr.trim().toUpperCase() === 'GB_CREATOR_ADDRESS_STW_NORTHGATE'
+      );
       setIsAdmin(isUserAdmin);
       if (isUserAdmin) {
         setActiveTab((prev) => {
