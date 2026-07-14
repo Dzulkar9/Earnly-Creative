@@ -222,9 +222,9 @@ impl EarnlyCoFundContract {
         assert!(!campaign.is_aborted, "project has been aborted");
 
         if campaign.project_type == 0 {
-            // Type 0: Instant Buy. No deadline checks. Pay creator directly.
+            // Type 0: Instant Buy. No deadline checks. Hold in contract escrow.
             let token_client = token::Client::new(&env, &campaign.token);
-            token_client.transfer(&contributor, &campaign.creator, &amount);
+            token_client.transfer(&contributor, &env.current_contract_address(), &amount);
 
             // Record purchase
             let key = DataKey::ContributorPledge(project_id, contributor.clone());
@@ -381,18 +381,8 @@ impl EarnlyCoFundContract {
             assert!(campaign.milestone_approved, "milestone progress is not approved by buyers");
         }
 
-        // Calculate partial disbursement amount based on custom milestone weight percentages
-        let amount_to_claim = if campaign.current_milestone == campaign.total_milestones - 1 {
-            // Final milestone: claim remaining balance to avoid rounding remnants
-            campaign.pledged_amount - campaign.funds_withdrawn
-        } else {
-            let pct = env
-                .storage()
-                .persistent()
-                .get(&DataKey::MilestonePercentage(project_id, campaign.current_milestone))
-                .unwrap_or(100 / campaign.total_milestones);
-            (campaign.pledged_amount * (pct as i128)) / 100
-        };
+        // Disburse 100% of the campaign funds directly, not following the milestone percentage
+        let amount_to_claim = campaign.pledged_amount - campaign.funds_withdrawn;
 
         // Transfer funds from contract to creator
         let token_client = token::Client::new(&env, &campaign.token);
@@ -501,6 +491,39 @@ impl EarnlyCoFundContract {
         }
 
         env.storage().persistent().set(&DataKey::Campaign(project_id), &campaign);
+    }
+
+    // Release escrowed funds for instant buy projects (called by contributor / buyer)
+    pub fn release_escrow(env: Env, contributor: Address, project_id: u32) {
+        contributor.require_auth();
+
+        let mut campaign: Campaign = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Campaign(project_id))
+            .expect("campaign not found");
+
+        assert_eq!(campaign.project_type, 0, "only instant buy projects can release escrow this way");
+        assert!(!campaign.is_completed, "project already completed");
+        assert!(!campaign.is_aborted, "cannot release aborted project");
+
+        let pledge_key = DataKey::ContributorPledge(project_id, contributor.clone());
+        let pledge: i128 = env
+            .storage()
+            .persistent()
+            .get(&pledge_key)
+            .expect("no pledge record found");
+        assert!(pledge > 0, "no funds locked by this contributor");
+
+        // Transfer funds from contract to creator
+        let token_client = token::Client::new(&env, &campaign.token);
+        token_client.transfer(&env.current_contract_address(), &campaign.creator, &pledge);
+
+        campaign.funds_withdrawn += pledge;
+        campaign.is_completed = true;
+
+        env.storage().persistent().set(&DataKey::Campaign(project_id), &campaign);
+        env.storage().persistent().set(&pledge_key, &0i128);
     }
 
     // View functions

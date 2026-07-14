@@ -37,6 +37,7 @@ export default function CreateCampaign() {
   const [durationDays, setDurationDays] = useState('30');
   const [category, setCategory] = useState('Technology');
   const [clientAddress, setClientAddress] = useState('');
+  const [minContribution, setMinContribution] = useState('0.5');
   
   // Milestones for Custom Milestone type
   const [milestones, setMilestones] = useState<MilestoneDetail[]>([
@@ -287,6 +288,7 @@ export default function CreateCampaign() {
           clientAddress: clientAddrParam,
           milestonePercentages: milestonePcts,
           imageUrl: imageUrl || '',
+          minContribution: projectType === 1 ? Number(minContribution) : 0.5
         }),
       });
 
@@ -465,6 +467,8 @@ export default function CreateCampaign() {
                     { value: 'Music & Audio', label: 'Music & Audio (SFX / Loops)' },
                     { value: 'Writing & Literature', label: 'Writing & Literature (E-Books / Docs)' },
                     { value: 'Video & Animation', label: 'Video & Animation (Lottie / Templates)' },
+                    { value: 'Coordinate', label: 'Coordinate (Mapping / GIS / Location)' },
+                    { value: 'Automatic', label: 'Automatic (AI / Bots / Automation)' },
                   ]}
                 />
               </div>
@@ -595,6 +599,26 @@ export default function CreateCampaign() {
                       max={90}
                       value={durationDays}
                       onChange={(e) => setDurationDays(e.target.value)}
+                      className="bg-zinc-950 border border-zinc-800 focus:border-zinc-700 rounded-lg p-2.5 text-zinc-200 text-sm transition outline-none font-mono"
+                    />
+                  </div>
+                )}
+
+                {projectType === 1 && (
+                  <div className="flex flex-col gap-1.5 md:col-span-2">
+                    <label className="text-xs font-semibold text-zinc-400 uppercase flex items-center gap-1">
+                      Minimum Backing Contribution (USDC)
+                      <span title="Minimum amount required to back this pool">
+                        <HelpCircle className="w-3.5 h-3.5 text-zinc-550" />
+                      </span>
+                    </label>
+                    <input
+                      type="number"
+                      required
+                      min={0.1}
+                      step="any"
+                      value={minContribution}
+                      onChange={(e) => setMinContribution(e.target.value)}
                       className="bg-zinc-950 border border-zinc-800 focus:border-zinc-700 rounded-lg p-2.5 text-zinc-200 text-sm transition outline-none font-mono"
                     />
                   </div>

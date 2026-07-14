@@ -66,3 +66,16 @@ Cargo.lock
 
 # Local dev helper script (machine-specific paths)
 /run_dev.sh
+
+# Agent workspace configurations
+/.agents/
+
+# Pitch deck files and assets (PPTX, HTML slides, generation scripts, and screenshots)
+*.pptx
+/public/Orbitera_Pitch_Deck.pptx
+/public/orbitera_pitch_deck.html
+/public/generate_deck.py
+/public/orbitera_cover.png
+/public/orbitera_roadmap.png
+/public/orbitera_tech.png
+/public/image.png

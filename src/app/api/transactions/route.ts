@@ -5,53 +5,69 @@ export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const address = searchParams.get('address');
+    const projectId = searchParams.get('projectId');
 
-    if (!address) {
-      return NextResponse.json({ error: 'Address is required' }, { status: 400 });
+    if (!address && !projectId) {
+      return NextResponse.json({ error: 'Address or projectId is required' }, { status: 400 });
     }
 
-    // 1. Fetch transactions initiated by the user
-    const { data: userTx, error: userError } = await supabase
-      .from('transaction_history')
-      .select('*')
-      .ilike('user_address', address);
+    let finalData: any[] = [];
 
-    if (userError) {
-      console.error('Error fetching user transactions:', userError);
-      return NextResponse.json({ error: userError.message }, { status: 500 });
-    }
-
-    // 2. Fetch projects created by this user
-    const { data: userProjects, error: projectsError } = await supabase
-      .from('projects')
-      .select('id')
-      .ilike('creator_address', address);
-
-    if (projectsError) {
-      console.error('Error fetching user projects:', projectsError);
-      return NextResponse.json({ error: projectsError.message }, { status: 500 });
-    }
-
-    const projectIds = (userProjects || []).map(p => p.id);
-    let finalData = userTx || [];
-
-    if (projectIds.length > 0) {
-      // 3. Fetch transactions for projects created by this user
-      const { data: projectTx, error: projectTxError } = await supabase
+    if (projectId) {
+      const { data, error } = await supabase
         .from('transaction_history')
         .select('*')
-        .in('project_id', projectIds);
+        .eq('project_id', Number(projectId));
 
-      if (projectTxError) {
-        console.error('Error fetching project transactions:', projectTxError);
-        return NextResponse.json({ error: projectTxError.message }, { status: 500 });
+      if (error) {
+        console.error('Error fetching project transactions:', error);
+        return NextResponse.json({ error: error.message }, { status: 500 });
+      }
+      finalData = data || [];
+    } else if (address) {
+      // 1. Fetch transactions initiated by the user
+      const { data: userTx, error: userError } = await supabase
+        .from('transaction_history')
+        .select('*')
+        .ilike('user_address', address);
+
+      if (userError) {
+        console.error('Error fetching user transactions:', userError);
+        return NextResponse.json({ error: userError.message }, { status: 500 });
       }
 
-      // Merge and remove duplicates by ID
-      const txMap = new Map();
-      finalData.forEach(tx => txMap.set(tx.id, tx));
-      (projectTx || []).forEach(tx => txMap.set(tx.id, tx));
-      finalData = Array.from(txMap.values());
+      // 2. Fetch projects created by this user
+      const { data: userProjects, error: projectsError } = await supabase
+        .from('projects')
+        .select('id')
+        .ilike('creator_address', address);
+
+      if (projectsError) {
+        console.error('Error fetching user projects:', projectsError);
+        return NextResponse.json({ error: projectsError.message }, { status: 500 });
+      }
+
+      const projectIds = (userProjects || []).map(p => p.id);
+      finalData = userTx || [];
+
+      if (projectIds.length > 0) {
+        // 3. Fetch transactions for projects created by this user
+        const { data: projectTx, error: projectTxError } = await supabase
+          .from('transaction_history')
+          .select('*')
+          .in('project_id', projectIds);
+
+        if (projectTxError) {
+          console.error('Error fetching project transactions:', projectTxError);
+          return NextResponse.json({ error: projectTxError.message }, { status: 500 });
+        }
+
+        // Merge and remove duplicates by ID
+        const txMap = new Map();
+        finalData.forEach(tx => txMap.set(tx.id, tx));
+        (projectTx || []).forEach(tx => txMap.set(tx.id, tx));
+        finalData = Array.from(txMap.values());
+      }
     }
 
     // Sort by timestamp desc

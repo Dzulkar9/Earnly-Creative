@@ -9,7 +9,11 @@ import {
   TransactionBuilder,
   nativeToScVal,
   scValToNative,
-  Account
+  Account,
+  Keypair,
+  Operation,
+  Asset,
+  Memo
 } from '@stellar/stellar-sdk';
 
 
@@ -254,13 +258,70 @@ export async function setVerifierKey(admin: string, verifierKey: string): Promis
 // core client functions
 // -------------------------------------------------------------
 
+async function ensureMockCampaign(projectId: number, xlmPrice: number): Promise<any> {
+  const state = getMockBlockchain();
+  let camp = state.campaigns[projectId];
+  if (!camp) {
+    try {
+      const { getProjectById } = require('./db');
+      const dbProj = await getProjectById(projectId);
+      if (dbProj) {
+        const deadline = Math.floor(new Date(dbProj.createdAt).getTime() / 1000) + 30 * 24 * 60 * 60;
+        camp = {
+          id: dbProj.id,
+          creator: dbProj.creatorAddress,
+          token: 'USDC_MOCK_ASSET',
+          target_amount: dbProj.targetAmount / xlmPrice,
+          pledged_amount: 0,
+          total_milestones: dbProj.milestonesCount,
+          current_milestone: 0,
+          is_completed: false,
+          is_aborted: false,
+          deadline,
+          milestone_approved: false,
+          funds_withdrawn: 0,
+          project_type: dbProj.projectType,
+          client: dbProj.clientAddress || dbProj.creatorAddress
+        };
+        state.campaigns[projectId] = camp;
+        if (dbProj.milestonePercentages) {
+          state.milestone_percentages[projectId] = dbProj.milestonePercentages;
+        }
+        saveMockBlockchain(state);
+        console.log(`Auto-generated mock blockchain campaign for project ID ${projectId} from DB.`);
+      }
+    } catch (dbErr) {
+      console.error('Error auto-generating mock campaign from DB:', dbErr);
+    }
+  }
+  return camp;
+}
+
 export async function getCampaign(projectId: number): Promise<CampaignState> {
   const xlmPrice = await getXlmPriceInUsd();
 
-  if (isMockMode()) {
-    const state = getMockBlockchain();
-    const camp = state.campaigns[projectId];
-    if (!camp) throw new Error('Campaign not found in mock chain');
+  // Determine project type from mock blockchain or DB first
+  const state = getMockBlockchain();
+  let localCamp = state.campaigns[projectId];
+  let projectType = localCamp?.project_type;
+
+  if (projectType === undefined) {
+    try {
+      const { getProjectById } = require('./db');
+      const dbProj = await getProjectById(projectId);
+      if (dbProj) {
+        projectType = dbProj.projectType;
+      }
+    } catch (e) {
+      console.warn('Failed to fetch project type from DB:', e);
+    }
+  }
+
+  const isLocalEscrowType = projectType === 0 || projectType === 2;
+
+  if (isMockMode() || isLocalEscrowType) {
+    let camp = await ensureMockCampaign(projectId, xlmPrice);
+    if (!camp) throw new Error('Campaign not found in mock chain or DB');
     
     // Auto-completion check: 3 days (259200 seconds) after reaching 100% (Type 1 only)
     if (camp.project_type === 1 && !camp.is_completed && !camp.is_aborted && camp.reached_100_at) {
@@ -315,8 +376,7 @@ export async function getCampaign(projectId: number): Promise<CampaignState> {
     
     return camp;
   } catch (err) {
-    const state = getMockBlockchain();
-    const camp = state.campaigns[projectId];
+    let camp = await ensureMockCampaign(projectId, xlmPrice);
     if (camp) {
       return {
         ...camp,
@@ -381,14 +441,15 @@ export async function createCampaign(
   console.log('Sending create_campaign transaction to Stellar Testnet...');
   const deadlineSecs = Math.floor(Date.now() / 1000) + durationDays * 86400;
   
-  const pctScVals = (milestonePercentages || []).map(p => nativeToScVal(p, { type: 'u32' }));
+  const onChainPercentages = projectType === 2 ? [100] : (milestonePercentages || []);
+  const pctScVals = onChainPercentages.map(p => nativeToScVal(p, { type: 'u32' }));
   const milestoneScVal = xdr.ScVal.scvVec(pctScVals);
 
   const id = await submitTransaction(creator, 'create_campaign', [
     Address.fromString(creator).toScVal(),
     Address.fromString(getTokenContractId()).toScVal(),
     nativeToScVal(Math.round(targetAmountXlm * 10000000), { type: 'i128' }),
-    nativeToScVal(totalMilestones, { type: 'u32' }),
+    nativeToScVal(projectType === 2 ? 1 : totalMilestones, { type: 'u32' }),
     nativeToScVal(deadlineSecs, { type: 'u64' }),
     nativeToScVal(projectType, { type: 'u32' }),
     Address.fromString(clientAddress || creator).toScVal(),
@@ -442,13 +503,15 @@ export async function pledgeFunds(projectId: number, amount: number, contributor
     if (userBal < xlmAmount) throw new Error(`Insufficient balance. Required: ~${xlmAmount} XLM, Available: ${userBal.toFixed(2)} XLM`);
     
     if (camp.project_type === 0) {
-      // Instant Buy: buyer pays XLM-converted, seller receives XLM-converted
+      // Instant Buy: buyer pays XLM-converted (held in escrow)
       state.balances[contributor] = userBal - xlmAmount;
       state.balances[camp.creator] = (state.balances[camp.creator] || 0) + xlmAmount;
       
       const key = `${projectId}-${contributor}`;
       state.pledges[key] = (state.pledges[key] || 0) + xlmAmount;
       camp.pledged_amount += xlmAmount;
+      camp.reached_100_at = Math.floor(Date.now() / 1000);
+      camp.is_completed = true;
     } else if (camp.project_type === 2) {
       if (camp.client.toLowerCase() !== camp.creator.toLowerCase()) {
         if (contributor.toLowerCase() !== camp.client.toLowerCase()) {
@@ -471,6 +534,20 @@ export async function pledgeFunds(projectId: number, amount: number, contributor
       
       const key = `${projectId}-${contributor}`;
       state.pledges[key] = xlmAmount;
+
+      try {
+        const { createClient } = require('@supabase/supabase-js');
+        const supabase = createClient(
+          process.env.NEXT_PUBLIC_SUPABASE_URL || '',
+          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
+        );
+        supabase.from('projects').update({ client_address: contributor }).eq('id', projectId)
+          .then(({ error }: any) => {
+            if (error) console.error('Error updating project client_address in Supabase:', error);
+          });
+      } catch (dbErr) {
+        console.error('Failed to update project client_address in Supabase:', dbErr);
+      }
     } else {
       if (Math.floor(Date.now() / 1000) >= camp.deadline) {
         throw new Error('Campaign deadline has passed');
@@ -493,22 +570,61 @@ export async function pledgeFunds(projectId: number, amount: number, contributor
     return;
   }
 
-  console.log(`Pledging ${xlmAmount} tokens to project ${projectId} on Testnet...`);
-  await submitTransaction(contributor, 'pledge_funds', [
-    Address.fromString(contributor).toScVal(),
-    nativeToScVal(projectId, { type: 'u32' }),
-    nativeToScVal(Math.round(xlmAmount * 10000000), { type: 'i128' })
+  console.log(`Pledging to project ${projectId} on Testnet...`);
+  const rawCamp = await queryContract('get_campaign', [
+    nativeToScVal(projectId, { type: 'u32' })
   ]);
+  const projectType = Number(rawCamp.project_type);
+
+  if (projectType === 0 || projectType === 2) {
+    console.log(`Testnet: sending payment to Escrow Holding Account: ${getEscrowHoldingAddress()}`);
+    await sendStellarPayment(contributor, getEscrowHoldingAddress(), String(xlmAmount));
+  } else {
+    let amountScVal;
+    if (projectType === 2) {
+      // Type 2: Custom Milestone. Pass the exact raw target amount on-chain to pass target_amount assertions
+      const rawTargetAmountStroops = rawCamp.target_amount;
+      console.log(`Custom Milestone: locking exactly 100% of target budget: ${rawTargetAmountStroops} stroops`);
+      amountScVal = nativeToScVal(rawTargetAmountStroops, { type: 'i128' });
+    } else {
+      amountScVal = nativeToScVal(Math.round(xlmAmount * 10000000), { type: 'i128' });
+    }
+
+    await submitTransaction(contributor, 'pledge_funds', [
+      Address.fromString(contributor).toScVal(),
+      nativeToScVal(projectId, { type: 'u32' }),
+      amountScVal
+    ]);
+  }
 
   const state = getMockBlockchain();
-  const camp = state.campaigns[projectId];
-  if (camp) {
-    camp.pledged_amount += xlmAmount;
-    if (camp.pledged_amount >= camp.target_amount && !camp.reached_100_at) {
-      camp.reached_100_at = Math.floor(Date.now() / 1000);
+  const dbCamp = state.campaigns[projectId];
+  if (dbCamp) {
+    if (projectType === 2) {
+      dbCamp.pledged_amount = dbCamp.target_amount;
+      dbCamp.client = contributor;
+
+      try {
+        const { createClient } = require('@supabase/supabase-js');
+        const supabase = createClient(
+          process.env.NEXT_PUBLIC_SUPABASE_URL || '',
+          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
+        );
+        supabase.from('projects').update({ client_address: contributor }).eq('id', projectId)
+          .then(({ error }: any) => {
+            if (error) console.error('Error updating project client_address in Supabase:', error);
+          });
+      } catch (dbErr) {
+        console.error('Failed to update project client_address in Supabase:', dbErr);
+      }
+    } else {
+      dbCamp.pledged_amount += xlmAmount;
+    }
+    if (dbCamp.pledged_amount >= dbCamp.target_amount && !dbCamp.reached_100_at) {
+      dbCamp.reached_100_at = Math.floor(Date.now() / 1000);
     }
     const key = `${projectId}-${contributor}`;
-    state.pledges[key] = (state.pledges[key] || 0) + xlmAmount;
+    state.pledges[key] = dbCamp.pledged_amount;
     saveMockBlockchain(state);
   }
 }
@@ -612,13 +728,8 @@ export async function claimMilestoneFunds(projectId: number, creator: string): P
     } else {
       if (!camp.milestone_approved) throw new Error('Milestone progress is not approved by buyer');
 
-      const pcts = state.milestone_percentages[projectId] || [];
-      const pct = pcts[camp.current_milestone] || (100 / camp.total_milestones);
-
-      const isLastMilestone = camp.current_milestone === camp.total_milestones - 1;
-      const disburseAmountXlm = isLastMilestone
-        ? camp.pledged_amount - camp.funds_withdrawn
-        : (camp.pledged_amount * pct) / 100;
+      // Disburse 100% of the campaign funds directly, not following the milestone percentage
+      const disburseAmountXlm = camp.pledged_amount - camp.funds_withdrawn;
 
       const creatorBal = state.balances[creator] || 0;
       state.balances[creator] = creatorBal + disburseAmountXlm;
@@ -830,6 +941,39 @@ export async function getContributorVote(projectId: number, milestone: number, a
 
 // Access Gating Verifier called by backend API route
 export async function verifyContributorAccess(projectId: number, addr: string): Promise<boolean> {
+  if (typeof window === 'undefined') {
+    const { getProjectById } = require('./db');
+    const project = await getProjectById(projectId);
+    if (!project) return false;
+
+    if (project.creatorAddress.toLowerCase() === addr.toLowerCase()) {
+      return true;
+    }
+
+    if (project.projectType === 2 && project.clientAddress && project.clientAddress.toLowerCase() === addr.toLowerCase()) {
+      return true;
+    }
+
+    const { createClient } = require('@supabase/supabase-js');
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL || '',
+      process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
+    );
+    const { data, error } = await supabase
+      .from('transaction_history')
+      .select('id')
+      .eq('project_id', projectId)
+      .in('type', ['lock_budget', 'purchase', 'pledge'])
+      .ilike('user_address', addr)
+      .limit(1);
+
+    if (error) {
+      console.error('Error verifying contributor access from database:', error);
+      return false;
+    }
+    return !!(data && data.length > 0);
+  }
+
   const camp = await getCampaign(projectId);
   if (!camp) return false;
 
@@ -910,8 +1054,9 @@ export function getNetworkPassphrase(): string {
 }
 
 export function getContractId(): string {
-  if (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_STELLAR_CAMPAIGN_CONTRACT_ID) {
-    return process.env.NEXT_PUBLIC_STELLAR_CAMPAIGN_CONTRACT_ID;
+  const envVal = typeof process !== 'undefined' && process.env.NEXT_PUBLIC_STELLAR_CAMPAIGN_CONTRACT_ID;
+  if (envVal && !envVal.includes('your_')) {
+    return envVal;
   }
   const net = getNetwork();
   if (net === 'mainnet') {
@@ -921,8 +1066,9 @@ export function getContractId(): string {
 }
 
 export function getTokenContractId(): string {
-  if (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_STELLAR_USDC_CONTRACT_ID) {
-    return process.env.NEXT_PUBLIC_STELLAR_USDC_CONTRACT_ID;
+  const envVal = typeof process !== 'undefined' && process.env.NEXT_PUBLIC_STELLAR_USDC_CONTRACT_ID;
+  if (envVal && !envVal.includes('your_')) {
+    return envVal;
   }
   const net = getNetwork();
   if (net === 'mainnet') {
@@ -930,6 +1076,13 @@ export function getTokenContractId(): string {
   }
   return 'CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC';
 }
+
+export function getEscrowHoldingAddress(): string {
+  const envVal = typeof process !== 'undefined' && process.env.NEXT_PUBLIC_STELLAR_ESCROW_HOLDING_ADDRESS;
+  if (envVal) return envVal;
+  return 'GBSVV4XTKTFLV2DEY4VY47TUACCH2OQKGXDQYDFDYEUWLIU6CXKWBUXH';
+}
+
 
 const DUMMY_ADDRESS = 'GCGJ6G7SPNOCJKKS6BVX4I73DXT3HQSAXIX3SSCCT2VVSCFEB2UEBRNC';
 
@@ -974,15 +1127,28 @@ async function queryTokenContract(functionName: string, args: xdr.ScVal[]): Prom
 // Fetch live XLM price in USD/USDC from Cryptocompare with a local fallback
 export async function getXlmPriceInUsd(): Promise<number> {
   try {
-    const res = await fetch('https://min-api.cryptocompare.com/data/price?fsym=XLM&tsyms=USD');
+    const res = await fetch('https://api.binance.com/api/v3/ticker/price?symbol=XLMUSDT');
     if (res.ok) {
       const data = await res.json();
-      if (data && typeof data.USD === 'number') {
-        return data.USD;
+      if (data && data.price) {
+        const val = parseFloat(data.price);
+        if (!isNaN(val) && val > 0) {
+          return val;
+        }
       }
     }
   } catch (err) {
-    console.warn('Could not fetch live XLM price, using fallback rate.', err);
+    try {
+      const res = await fetch('https://min-api.cryptocompare.com/data/price?fsym=XLM&tsyms=USD');
+      if (res.ok) {
+        const data = await res.json();
+        if (data && typeof data.USD === 'number') {
+          return data.USD;
+        }
+      }
+    } catch {
+      // quiet fallback
+    }
   }
   return 0.11; // Fallback exchange rate (1 XLM = 0.11 USDC/USD)
 }
@@ -1026,14 +1192,28 @@ export async function getWalletBalances(address: string): Promise<{ xlm: number;
     };
   }
   try {
-    const bal = await queryTokenContract('balance', [
-      Address.fromString(address).toScVal()
-    ]);
-    const xlm = Number(bal) / 10000000;
+    const net = getNetwork();
+    const horizonUrl = net === 'mainnet' ? 'https://horizon.stellar.org' : 'https://horizon-testnet.stellar.org';
+    const res = await fetch(`${horizonUrl}/accounts/${address}`);
+    if (!res.ok) {
+      return { xlm: 0, usdc: 0 };
+    }
+    const data = await res.json();
+    interface HorizonBalanceLine {
+      asset_type: string;
+      asset_code?: string;
+      balance: string;
+    }
+    const balancesList = data.balances as HorizonBalanceLine[];
+    const nativeBal = balancesList.find((b) => b.asset_type === 'native');
+    const usdcBal = balancesList.find((b) => b.asset_code === 'USDC');
+    
+    const xlm = nativeBal ? parseFloat(nativeBal.balance) : 0;
     const price = await getXlmPriceInUsd();
     const usdc = xlm * price;
+    
     return {
-      xlm: Math.round(xlm * 100) / 100,
+      xlm: xlm,
       usdc: Math.round(usdc * 100) / 100
     };
   } catch (err) {
@@ -1062,23 +1242,66 @@ async function submitTransaction(
     .build();
 
   const preparedTx = await getRpcServer().prepareTransaction(tx);
-  const xdrString = preparedTx.toXDR();
-  const signResult = await signTransaction(xdrString, {
-    networkPassphrase: getNetworkPassphrase(),
-    address: senderAddress
-  });
   
-  if (signResult.error) {
-    throw new Error(`Transaction signing rejected by Freighter: ${signResult.error}`);
+  let signedTx;
+  let walletType = 'freighter';
+  let secretKey: string | null = null;
+  
+  if (typeof window !== 'undefined') {
+    walletType = localStorage.getItem('earnly_wallet_type') || 'freighter';
+    secretKey = localStorage.getItem('earnly_secret_key');
   }
-  
-  const signedTx = TransactionBuilder.fromXDR(signResult.signedTxXdr, getNetworkPassphrase());
+
+  if (walletType === 'manual' && secretKey) {
+    // Penandatanganan manual dengan Secret Key
+    const kp = Keypair.fromSecret(secretKey);
+    preparedTx.sign(kp);
+    signedTx = preparedTx;
+  } else if (walletType === 'kit') {
+    // Penandatanganan via Stellar Wallets Kit
+    const { StellarWalletsKit, Networks: KitNetworks } = await import('@creit.tech/stellar-wallets-kit');
+    const { defaultModules } = await import('@creit.tech/stellar-wallets-kit/modules/utils');
+    
+    try {
+      const net = getNetwork();
+      StellarWalletsKit.init({
+        modules: defaultModules(),
+        network: net === 'mainnet' ? KitNetworks.PUBLIC : KitNetworks.TESTNET,
+      });
+    } catch (e) {
+      console.warn('Kit initialization warning/already initialized:', e);
+    }
+
+    const xdrString = preparedTx.toXDR();
+    const { signedTxXdr } = await StellarWalletsKit.signTransaction(xdrString, {
+      networkPassphrase: getNetworkPassphrase(),
+      address: senderAddress
+    });
+
+    if (!signedTxXdr) {
+      throw new Error("Failed to retrieve signature from the wallet kit.");
+    }
+    signedTx = TransactionBuilder.fromXDR(signedTxXdr, getNetworkPassphrase());
+  } else {
+    // Fallback: Freighter API
+    const xdrString = preparedTx.toXDR();
+    const signResult = await signTransaction(xdrString, {
+      networkPassphrase: getNetworkPassphrase(),
+      address: senderAddress
+    });
+    
+    if (signResult.error) {
+      throw new Error(`Transaction signing rejected by Freighter: ${signResult.error}`);
+    }
+    
+    signedTx = TransactionBuilder.fromXDR(signResult.signedTxXdr, getNetworkPassphrase());
+  }
+
   const submitResponse = await getRpcServer().sendTransaction(signedTx);
   
   if (submitResponse.status === 'ERROR') {
     throw new Error(`Stellar transaction submission failed: ${submitResponse.errorResult || 'unknown'}`);
   }
-
   
   let txResult = await getRpcServer().getTransaction(submitResponse.hash);
   for (let i = 0; i < 15; i++) {
@@ -1098,3 +1321,390 @@ async function submitTransaction(
     throw new Error(`Stellar transaction failed on-chain: ${txResult.status}`);
   }
 }
+
+export interface StellarTransaction {
+  id: string;
+  hash: string;
+  type: 'sent' | 'received';
+  amount: string;
+  counterparty: string;
+  date: string;
+  status: 'success' | 'failed';
+  memo?: string;
+}
+
+export async function fetchRecentPayments(address: string, network: NetworkType = 'testnet'): Promise<StellarTransaction[]> {
+  if (isMockMode()) {
+    // In mock mode, return mock transaction history or empty
+    return [
+      {
+        id: 'mock-tx-1',
+        hash: 'mock-hash-1',
+        type: 'received',
+        amount: '100.0000',
+        counterparty: 'GB_CONTRIBUTOR_1_STW_NORTHGATE',
+        date: new Date(Date.now() - 3600000).toISOString(),
+        status: 'success',
+        memo: 'Welcome Bonus'
+      },
+      {
+        id: 'mock-tx-2',
+        hash: 'mock-hash-2',
+        type: 'sent',
+        amount: '10.5000',
+        counterparty: 'GB_CREATOR_ADDRESS_STW_NORTHGATE',
+        date: new Date(Date.now() - 7200000).toISOString(),
+        status: 'success',
+        memo: 'Project Pledge'
+      }
+    ];
+  }
+
+  const horizonUrl = network === 'mainnet' ? 'https://horizon.stellar.org' : 'https://horizon-testnet.stellar.org';
+  try {
+    const res = await fetch(`${horizonUrl}/accounts/${address}/payments?order=desc&limit=10`);
+    if (res.ok) {
+      const data = await res.json();
+      interface HorizonBalanceChange {
+        asset_type: string;
+        asset_code?: string;
+        type: string;
+        from: string;
+        to: string;
+        amount: string;
+      }
+      interface HorizonPaymentRecord {
+        id: string;
+        transaction_hash: string;
+        type: string;
+        created_at: string;
+        transaction_successful?: boolean;
+        account?: string;
+        funder?: string;
+        starting_balance?: string;
+        to?: string;
+        from?: string;
+        amount?: string;
+        into?: string;
+        asset_balance_changes?: HorizonBalanceChange[];
+      }
+      const records = (data._embedded?.records || []) as HorizonPaymentRecord[];
+      return records.map((r): StellarTransaction => {
+        const successful = r.transaction_successful !== false;
+        const status = successful ? 'success' : 'failed';
+        
+        // 1. Check if there are internal balance changes (e.g., Soroban contract calls)
+        if (r.asset_balance_changes && r.asset_balance_changes.length > 0) {
+          const change = r.asset_balance_changes[0];
+          const received = change.to === address;
+          return {
+            id: r.id,
+            hash: r.transaction_hash,
+            type: received ? 'received' : 'sent',
+            amount: change.amount || '0.0000',
+            counterparty: (received ? change.from : change.to) || 'Unknown',
+            date: r.created_at,
+            status
+          };
+        }
+
+        // 2. Standard create_account
+        if (r.type === 'create_account') {
+          const received = r.account === address;
+          return {
+            id: r.id,
+            hash: r.transaction_hash,
+            type: received ? 'received' : 'sent',
+            amount: r.starting_balance || '0.0000',
+            counterparty: (received ? r.funder : r.account) || 'Unknown',
+            date: r.created_at,
+            status
+          };
+        }
+
+        // 3. Standard payment
+        const received = r.to === address;
+        return {
+          id: r.id,
+          hash: r.transaction_hash,
+          type: received ? 'received' : 'sent',
+          amount: r.amount || '0.0000',
+          counterparty: (received ? r.from : r.to) || r.into || r.funder || r.account || 'Unknown',
+          date: r.created_at,
+          status
+        };
+      });
+    }
+  } catch (e) {
+    console.error("Failed to fetch payments:", e);
+  }
+  return [];
+}
+
+export async function sendStellarPayment(
+  senderAddress: string,
+  destination: string,
+  amount: string,
+  assetCode: 'XLM' | 'USDC' = 'XLM',
+  memoText?: string
+): Promise<string> {
+  if (isMockMode()) {
+    const amountNum = parseFloat(amount);
+    const state = getMockBlockchain();
+    const senderBal = state.balances[senderAddress] ?? 0;
+    if (senderBal < amountNum) {
+      throw new Error(`Insufficient balance in mock account. Available: ${senderBal} USDC`);
+    }
+    state.balances[senderAddress] = senderBal - amountNum;
+    state.balances[destination] = (state.balances[destination] ?? 0) + amountNum;
+    saveMockBlockchain(state);
+    window.dispatchEvent(new Event('walletChange'));
+    return 'mock-transaction-hash-' + Math.random().toString(36).substring(7);
+  }
+
+  const net = getNetwork();
+  const horizonUrl = net === 'mainnet' ? 'https://horizon.stellar.org' : 'https://horizon-testnet.stellar.org';
+  const passphrase = getNetworkPassphrase();
+
+  const accountRes = await fetch(`${horizonUrl}/accounts/${senderAddress}`);
+  if (!accountRes.ok) {
+    throw new Error("Sender account not found on Stellar network. Make sure it is funded.");
+  }
+  const accountData = await accountRes.json();
+  const account = new Account(senderAddress, accountData.sequence);
+
+  let destExists = true;
+  try {
+    const destRes = await fetch(`${horizonUrl}/accounts/${destination}`);
+    if (!destRes.ok) destExists = false;
+  } catch {
+    destExists = false;
+  }
+
+  const builder = new TransactionBuilder(account, {
+    fee: '500',
+    networkPassphrase: passphrase
+  });
+
+  let asset = Asset.native();
+  if (assetCode === 'USDC') {
+    const usdcIssuer = net === 'mainnet' 
+      ? 'GA5ZSESTVFBMM5J746H4H7I3ZX3HQLCJ4Z555J6A2P55FC74GMX63I5E' 
+      : 'GBBD47IF6LWK75TZSQXT47R664HQTYV2VWN54G37JU4Z5Z6CAE2UY2TC'; 
+    asset = new Asset('USDC', usdcIssuer);
+  }
+
+  if (assetCode === 'XLM' && !destExists) {
+    builder.addOperation(Operation.createAccount({
+      destination,
+      startingBalance: amount
+    }));
+  } else {
+    builder.addOperation(Operation.payment({
+      destination,
+      asset,
+      amount
+    }));
+  }
+
+  if (memoText && memoText.trim()) {
+    builder.addMemo(Memo.text(memoText.trim()));
+  }
+
+  const tx = builder.setTimeout(60).build();
+  
+  let signedTx;
+  let walletType = 'freighter';
+  let secretKey: string | null = null;
+  
+  if (typeof window !== 'undefined') {
+    walletType = localStorage.getItem('earnly_wallet_type') || 'freighter';
+    secretKey = localStorage.getItem('earnly_secret_key');
+  }
+
+  if (walletType === 'manual' && secretKey) {
+    const kp = Keypair.fromSecret(secretKey);
+    tx.sign(kp);
+    signedTx = tx;
+  } else if (walletType === 'kit') {
+    const { StellarWalletsKit, Networks: KitNetworks } = await import('@creit.tech/stellar-wallets-kit');
+    const { defaultModules } = await import('@creit.tech/stellar-wallets-kit/modules/utils');
+    
+    try {
+      StellarWalletsKit.init({
+        modules: defaultModules(),
+        network: net === 'mainnet' ? KitNetworks.PUBLIC : KitNetworks.TESTNET,
+      });
+    } catch {}
+
+    const xdrString = tx.toXDR();
+    const { signedTxXdr } = await StellarWalletsKit.signTransaction(xdrString, {
+      networkPassphrase: passphrase,
+      address: senderAddress
+    });
+
+    if (!signedTxXdr) {
+      throw new Error("Failed to retrieve signature from the wallet kit.");
+    }
+    signedTx = TransactionBuilder.fromXDR(signedTxXdr, passphrase);
+  } else {
+    const { signTransaction: signTxFreighter } = await import('@stellar/freighter-api');
+    const xdrString = tx.toXDR();
+    const signResult = await signTxFreighter(xdrString, {
+      networkPassphrase: passphrase,
+      address: senderAddress
+    });
+    
+    if (signResult.error) {
+      throw new Error(`Transaction signing rejected by Freighter: ${signResult.error}`);
+    }
+    
+    signedTx = TransactionBuilder.fromXDR(signResult.signedTxXdr, passphrase);
+  }
+
+  const submitRes = await fetch(`${horizonUrl}/transactions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ tx: signedTx.toXDR() })
+  });
+
+  const submitData = await submitRes.json();
+  if (!submitRes.ok) {
+    const resultCodes = submitData.extras?.result_codes?.operations?.join(', ') || submitData.extras?.result_codes?.transaction || '';
+    throw new Error(submitData.detail || `Transaction failed: ${resultCodes}`);
+  }
+
+  window.dispatchEvent(new Event('walletChange'));
+  return submitData.hash;
+}
+
+export function advanceMilestoneMock(projectId: number, milestoneIndex: number): void {
+  const state = getMockBlockchain();
+  const camp = state.campaigns[projectId];
+  if (camp) {
+    camp.current_milestone = milestoneIndex + 1;
+    if (camp.current_milestone >= camp.total_milestones) {
+      camp.is_completed = true;
+    }
+    saveMockBlockchain(state);
+    console.log(`Mock blockchain client: advanced project ${projectId} to milestone ${camp.current_milestone}, completed: ${camp.is_completed}`);
+    window.dispatchEvent(new Event('walletChange'));
+  }
+}
+
+export async function releaseEscrowFunds(projectId: number, buyerAddress: string): Promise<void> {
+  if (isMockMode()) {
+    const state = getMockBlockchain();
+    const camp = state.campaigns[projectId];
+    if (!camp) return;
+
+    const key = `${projectId}-${buyerAddress}`;
+    const pledged = state.pledges[key] || 0;
+    if (pledged > 0) {
+      state.pledges[key] = 0; // Clear the pledge/escrow balance
+      state.balances[camp.creator] = (state.balances[camp.creator] || 0) + pledged; // Credit the creator's wallet
+      saveMockBlockchain(state);
+      console.log(`Mock blockchain: released ${pledged.toFixed(2)} XLM from escrow log for project ${projectId} to creator ${camp.creator}`);
+      
+      // Dispatch wallet change to update UI
+      window.dispatchEvent(new Event('walletChange'));
+    }
+  }
+}
+
+export function getEscrowHoldingSecret(): string {
+  let secret = process.env.STELLAR_ESCROW_HOLDING_SECRET;
+  if (!secret) {
+    try {
+      const fs = eval("require('fs')");
+      const path = eval("require('path')");
+      const envPath = path.join(process.cwd(), '.env');
+      if (fs.existsSync(envPath)) {
+        const content = fs.readFileSync(envPath, 'utf8');
+        for (const line of content.split('\n')) {
+          const match = line.match(/^\s*STELLAR_ESCROW_HOLDING_SECRET\s*=\s*(.*)?\s*$/);
+          if (match) {
+            let val = match[1] || '';
+            if (val.startsWith('"') && val.endsWith('"')) {
+              val = val.slice(1, -1);
+            }
+            secret = val.trim();
+            break;
+          }
+        }
+      }
+    } catch (e) {
+      console.error('Failed to manually parse .env for escrow secret:', e);
+    }
+  }
+  return secret || '';
+}
+
+export async function disburseEscrowOnChain(destinationAddress: string, amount: string): Promise<string> {
+  const secret = getEscrowHoldingSecret();
+  if (!secret) {
+    throw new Error('STELLAR_ESCROW_HOLDING_SECRET is not configured in environment variables');
+  }
+
+  const sourceKeypair = Keypair.fromSecret(secret);
+  const sourceAddress = sourceKeypair.publicKey();
+
+  const net = getNetwork();
+  const horizonUrl = net === 'mainnet' ? 'https://horizon.stellar.org' : 'https://horizon-testnet.stellar.org';
+  const passphrase = getNetworkPassphrase();
+
+  const accountRes = await fetch(`${horizonUrl}/accounts/${sourceAddress}`);
+  if (!accountRes.ok) {
+    throw new Error(`Escrow holding account ${sourceAddress} not found on Stellar network.`);
+  }
+  const accountData = await accountRes.json();
+  const account = new Account(sourceAddress, accountData.sequence);
+
+  let destExists = true;
+  try {
+    const destRes = await fetch(`${horizonUrl}/accounts/${destinationAddress}`);
+    if (!destRes.ok) destExists = false;
+  } catch {
+    destExists = false;
+  }
+
+  const { TimeoutInfinite } = require('@stellar/stellar-sdk');
+  const builder = new TransactionBuilder(account, {
+    fee: '500',
+    networkPassphrase: passphrase
+  })
+  .setTimeout(TimeoutInfinite);
+
+  if (!destExists) {
+    builder.addOperation(Operation.createAccount({
+      destination: destinationAddress,
+      startingBalance: amount
+    }));
+  } else {
+    builder.addOperation(Operation.payment({
+      destination: destinationAddress,
+      asset: Asset.native(),
+      amount: amount
+    }));
+  }
+
+  const tx = builder.build();
+  tx.sign(sourceKeypair);
+
+  const xdr = tx.toXDR();
+
+  const submitRes = await fetch(`${horizonUrl}/transactions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ tx: xdr })
+  });
+
+  const submitData = await submitRes.json();
+  if (!submitRes.ok) {
+    const resultCodes = submitData.extras?.result_codes?.operations?.join(', ') || submitData.extras?.result_codes?.transaction || '';
+    throw new Error(submitData.detail || `Transaction failed: ${resultCodes}`);
+  }
+
+  return submitData.hash;
+}
+

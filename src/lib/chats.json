@@ -1,0 +1,55 @@
+[
+  {
+    "id": "hgjkrusk2",
+    "projectId": 20,
+    "sender": "GDC736TFD45KWHPVK5XLBCPDU3F6CQI3PR2MEAPQ2EF6VI3SAPKCLZFT",
+    "message": "Mantap",
+    "timestamp": "2026-07-13T09:40:07.641Z",
+    "isCreator": false
+  },
+  {
+    "id": "cqiqqswfg",
+    "projectId": 21,
+    "sender": "GCMFDLTMLRP3ALYBTVHGZVHI4T3YUE4MX32E23PEE2EZCAGEUM2ODITT",
+    "message": "hello",
+    "timestamp": "2026-07-13T09:59:03.250Z",
+    "isCreator": false,
+    "buyerAddress": "GCMFDLTMLRP3ALYBTVHGZVHI4T3YUE4MX32E23PEE2EZCAGEUM2ODITT"
+  },
+  {
+    "id": "ikqub3cjw",
+    "projectId": 21,
+    "sender": "GAR3KKUNUGI6J6RWEP26YQ34OJ3PIIFHRO67CGUQDNLGYCIWNVRGPRKS",
+    "message": "hai",
+    "timestamp": "2026-07-13T10:10:16.730Z",
+    "isCreator": true,
+    "buyerAddress": "GCMFDLTMLRP3ALYBTVHGZVHI4T3YUE4MX32E23PEE2EZCAGEUM2ODITT"
+  },
+  {
+    "id": "h0kne4cr6",
+    "projectId": 21,
+    "sender": "GCMFDLTMLRP3ALYBTVHGZVHI4T3YUE4MX32E23PEE2EZCAGEUM2ODITT",
+    "message": "can i buy the item?",
+    "timestamp": "2026-07-13T10:12:17.631Z",
+    "isCreator": false,
+    "buyerAddress": "GCMFDLTMLRP3ALYBTVHGZVHI4T3YUE4MX32E23PEE2EZCAGEUM2ODITT"
+  },
+  {
+    "id": "63sw14oty",
+    "projectId": 31,
+    "sender": "GAR3KKUNUGI6J6RWEP26YQ34OJ3PIIFHRO67CGUQDNLGYCIWNVRGPRKS",
+    "message": "hello",
+    "timestamp": "2026-07-13T20:22:52.220Z",
+    "isCreator": false,
+    "buyerAddress": "GAR3KKUNUGI6J6RWEP26YQ34OJ3PIIFHRO67CGUQDNLGYCIWNVRGPRKS"
+  },
+  {
+    "id": "w38jyxb38",
+    "projectId": 31,
+    "sender": "GDC736TFD45KWHPVK5XLBCPDU3F6CQI3PR2MEAPQ2EF6VI3SAPKCLZFT",
+    "message": "hai",
+    "timestamp": "2026-07-14T01:14:48.676Z",
+    "isCreator": true,
+    "buyerAddress": "GAR3KKUNUGI6J6RWEP26YQ34OJ3PIIFHRO67CGUQDNLGYCIWNVRGPRKS"
+  }
+]

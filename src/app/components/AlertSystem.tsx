@@ -92,7 +92,7 @@ export default function AlertSystem() {
               exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.2 } }}
               className="pointer-events-auto"
             >
-              <div className={`p-4 rounded-xl border backdrop-blur-md shadow-2xl flex gap-3 items-start relative overflow-hidden bg-zinc-950/85 ${
+              <div className={`p-4 rounded-xl border backdrop-blur-md shadow-2xl flex gap-3 items-start relative overflow-hidden bg-zinc-950 ${
                 isSuccess ? 'border-emerald-500/20 shadow-emerald-950/10' :
                 isError ? 'border-rose-500/20 shadow-rose-950/10' :
                 isWarning ? 'border-amber-500/20 shadow-amber-950/10' :
@@ -138,7 +138,7 @@ export default function AlertSystem() {
                 {/* Close Button */}
                 <button
                   onClick={() => removeAlert(alert.id)}
-                  className="absolute top-2.5 right-2.5 p-1 rounded-md text-zinc-500 hover:text-white hover:bg-zinc-900 transition"
+                  className="absolute top-2.5 right-2.5 p-1 rounded-md text-zinc-500 hover:text-white hover:bg-zinc-800 transition"
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>

@@ -70,7 +70,7 @@ export async function POST(req: NextRequest) {
         const options = isImage
           ? {
               folder: 'earnly_covers',
-              resource_type: 'image',
+              resource_type: 'auto',
               public_id: path.parse(fileName).name,
             }
           : {
@@ -112,7 +112,7 @@ export async function POST(req: NextRequest) {
       type: file.type,
       storageType: 'local',
       encryptedPath: `/uploads/${fileName}`,
-      imageUrl: isImage ? `/uploads/${fileName}` : undefined,
+      imageUrl: `/uploads/${fileName}`,
       key: keyBuffer ? keyBuffer.toString('hex') : undefined,
       iv: ivBuffer ? ivBuffer.toString('hex') : undefined,
     });

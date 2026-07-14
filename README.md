@@ -1,6 +1,8 @@
 # 🎨 Earnly Creative
 
-**A Soroban-gated digital marketplace with crowdfund pool and milestone escrow, powered by Stellar.**
+**A Soroban-gated digital marketplace with crowdfund pool and milestone escrow, powered by Stellar.**  
+**Developed by Team Orbitera**
+
 https://earnly-creative.vercel.app/
 ---
 
@@ -33,15 +35,12 @@ Contract    : CC7B2NCHNK5VWLEK6HF2WPQAZWDBPVBWZ7JZRV4OJQN4FJZNIUGLIEOQ
 
 ## ✨ Key Features
 
-- Connect Stellar wallet (Freighter).
-- Browse marketplace with search, filter, and pagination.
-- Create projects as Instant Buy, Crowdfund Pool, or Milestone Escrow.
-- Pledge, purchase, or lock budget in smart contract escrow.
-- Vote on milestone completion as a client.
-- Claim milestone-weighted payouts as a creator.
-- Download encrypted deliverables with on-chain access gating.
-- Register as a verified creator with ZK identity proof (anti-Sybil via nullifier).
-- Switch between simulation, testnet, and mainnet modes.
+- **Connect Stellar Wallet**: Easy integration using Freighter.
+- **Flexible Project Models**: Create projects as Instant Buy, Crowdfund Pool, or Custom Milestone Escrow.
+- **Milestone Escrow Protection**: Pledge, purchase, or lock budget in smart contract escrow with stage-by-stage voting and weighted payouts.
+- **ZK Identity Verification**: Register as a verified creator with Zero-Knowledge identity proof (anti-Sybil via nullifier hash) for 100% privacy-preserving trust.
+- **Access-Gated Decryption**: Download encrypted deliverables with on-chain access gating.
+- **Cross-Environment Support**: Seamlessly switch between local simulation sandbox, testnet, and mainnet modes.
 
 ---
 
@@ -186,8 +185,19 @@ earnly-cofund/
 └── public/                         # Static assets
 ```
 
----
+## 🔮 Future Roadmap
 
+To enhance user onboarding and platform capabilities, the following features are planned for future releases (interactive mockups and simulators are available in the pitch deck):
+
+1. **Gasless Protocol (Sponsored Transactions)**:
+   - Integrate Stellar's native **Fee-Bump Transactions** (CAP-0015).
+   - Allows users to interact with Earnly Creative contracts and purchase assets using only their USDC balance with **0 XLM fees**. The platform relayer pays the XLM gas fees and recovers them directly in micro-amounts of USDC.
+2. **Decentralized Arbitration Courts**:
+   - Establish decentralized juror pools where selected community members can vote on project disputes and earn token rewards for maintaining high-quality arbitration.
+3. **Embeddable Checkout SDK**:
+   - Create a lightweight JavaScript SDK enabling external Web2 websites or blogs to easily embed token-gated digital file checkout buttons with under 5 lines of code.
+
+---
 
 ## 🔄 Regenerate Contract Interface
 

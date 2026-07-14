@@ -27,7 +27,8 @@ export async function POST(req: NextRequest) {
       projectType,
       clientAddress,
       milestonePercentages,
-      imageUrl
+      imageUrl,
+      minContribution
     } = body;
 
     if (!id || !title || !creatorAddress || !targetAmount) {
@@ -48,7 +49,8 @@ export async function POST(req: NextRequest) {
       projectType: Number(projectType ?? 1),
       clientAddress: clientAddress || '',
       milestonePercentages: milestonePercentages || [],
-      imageUrl: imageUrl || ''
+      imageUrl: imageUrl || '',
+      minContribution: minContribution !== undefined ? Number(minContribution) : 0.5
     };
 
     await saveProject(newProject);

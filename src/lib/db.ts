@@ -3,6 +3,10 @@ import { createClient } from '@supabase/supabase-js';
 export interface MilestoneDetail {
   title: string;
   description: string;
+  progressDescription?: string;
+  progressMediaUrl?: string;
+  progressMediaType?: string;
+  progressUpdatedAt?: string;
 }
 
 export interface FileDetails {
@@ -32,6 +36,7 @@ export interface ProjectMetadata {
   clientAddress?: string; // Client address for Custom Milestone
   milestonePercentages?: number[]; // Percentage split for milestones
   imageUrl?: string; // URL/path for the product cover photo
+  minContribution?: number; // minimum contribution threshold for backing
 }
 
 export interface CreatorApplication {
@@ -73,6 +78,10 @@ export async function getAllProjects(): Promise<ProjectMetadata[]> {
         .map((m: any) => ({
           title: m.title,
           description: m.description,
+          progressDescription: m.progress_description || undefined,
+          progressMediaUrl: m.progress_media_url || undefined,
+          progressMediaType: m.progress_media_type || undefined,
+          progressUpdatedAt: m.progress_updated_at || undefined,
         }));
 
       const rawFile = Array.isArray(p.files) ? p.files[0] : p.files;
@@ -136,6 +145,10 @@ export async function getProjectById(id: number): Promise<ProjectMetadata | null
       .map((m: any) => ({
         title: m.title,
         description: m.description,
+        progressDescription: m.progress_description || undefined,
+        progressMediaUrl: m.progress_media_url || undefined,
+        progressMediaType: m.progress_media_type || undefined,
+        progressUpdatedAt: m.progress_updated_at || undefined,
       }));
 
     const rawFile = Array.isArray(p.files) ? p.files[0] : p.files;
@@ -167,7 +180,8 @@ export async function getProjectById(id: number): Promise<ProjectMetadata | null
       milestonePercentages: (p.milestones || [])
         .sort((a: any, b: any) => a.index - b.index)
         .map((m: any) => m.percentage),
-      imageUrl: p.image_url || undefined
+      imageUrl: p.image_url || undefined,
+      minContribution: p.min_contribution !== null && p.min_contribution !== undefined ? Number(p.min_contribution) : 0.5
     };
   } catch (error) {
     console.error(`Error in getProjectById for ${id}:`, error);
@@ -190,7 +204,8 @@ export async function saveProject(project: ProjectMetadata): Promise<void> {
         project_type: project.projectType,
         client_address: project.clientAddress || null,
         image_url: project.imageUrl || null,
-        created_at: project.createdAt
+        created_at: project.createdAt,
+        min_contribution: project.minContribution !== undefined ? project.minContribution : 0.5
       });
 
     if (projectError) {
@@ -210,7 +225,11 @@ export async function saveProject(project: ProjectMetadata): Promise<void> {
         index: idx,
         title: m.title,
         description: m.description,
-        percentage: project.milestonePercentages?.[idx] || 0
+        percentage: project.milestonePercentages?.[idx] || 0,
+        progress_description: m.progressDescription || null,
+        progress_media_url: m.progressMediaUrl || null,
+        progress_media_type: m.progressMediaType || null,
+        progress_updated_at: m.progressUpdatedAt || null
       }));
 
       const { error: milestoneError } = await supabase
@@ -335,6 +354,35 @@ export async function saveApplication(app: CreatorApplication): Promise<void> {
     }
   } catch (error) {
     console.error('Error in saveApplication:', error);
+    throw error;
+  }
+}
+
+export async function deleteProject(id: number): Promise<void> {
+  try {
+    // 1. Delete associated milestones
+    await supabase.from('project_milestones').delete().eq('project_id', id);
+
+    // 2. Delete associated file metadata
+    await supabase.from('project_files').delete().eq('project_id', id);
+
+    // 3. Delete associated reviews/ratings
+    await supabase.from('project_ratings').delete().eq('project_id', id);
+
+    // 4. Delete associated disputes
+    await supabase.from('project_disputes').delete().eq('project_id', id);
+
+    // 5. Delete associated transaction history
+    await supabase.from('transaction_history').delete().eq('project_id', id);
+
+    // 6. Delete the project listing itself
+    const { error } = await supabase.from('projects').delete().eq('id', id);
+    if (error) {
+      console.error(`Error deleting project ${id} from Supabase:`, error);
+      throw error;
+    }
+  } catch (error) {
+    console.error(`Error in deleteProject for ${id}:`, error);
     throw error;
   }
 }

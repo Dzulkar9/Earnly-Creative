@@ -60,32 +60,85 @@ export default function Dashboard() {
     "🔒 Local Zero-Knowledge Proof generated and verified for compliance audit logs."
   ];
 
-  const topCreators = [
-    {
-      address: 'GB_CREATOR_ADDRESS_STW_NORTHGATE',
-      name: 'Astrid Vlachakis',
-      role: 'Compliance Admin',
-      avatarColor: 'from-indigo-655 to-purple-650',
-      projectsCount: 12,
-      successRate: 100,
-    },
-    {
-      address: 'GB_CONTRIBUTOR_1_STW_NORTHGATE',
-      name: 'Cormac Aleixo',
-      role: 'Platform VIP Creator',
-      avatarColor: 'from-emerald-500 to-teal-600',
-      projectsCount: 8,
-      successRate: 92,
-    },
-    {
-      address: 'GB_GUEST_ADDRESS_STW_NORTHGATE',
-      name: 'Idoia Marchetti',
-      role: 'Verified Seller',
-      avatarColor: 'from-pink-600 to-rose-650',
-      projectsCount: 5,
-      successRate: 100,
+  const [creatorsList, setCreatorsList] = useState<any[]>([]);
+
+  const getFriendlyName = (addr: string) => {
+    const found = creatorsList.find(c => c.walletAddress.toLowerCase() === addr.toLowerCase());
+    if (found && found.realName) return found.realName;
+    if (addr === 'GB_CREATOR_ADDRESS_STW_NORTHGATE') return '@creator';
+    if (addr === 'GB_CONTRIBUTOR_1_STW_NORTHGATE') return '@backer1';
+    if (addr === 'GB_CONTRIBUTOR_2_STW_NORTHGATE') return '@backer2';
+    return `${addr.slice(0, 4)}...${addr.slice(-4)}`;
+  };
+
+  const getDynamicCreators = () => {
+    const creatorAddresses = Array.from(new Set(projects.map(p => p.creatorAddress)));
+    const list = creatorAddresses.map(addr => {
+      const name = getFriendlyName(addr);
+      const app = creatorsList.find(c => c.walletAddress.toLowerCase() === addr.toLowerCase());
+      const role = app && app.walletAddress === 'GB_CREATOR_ADDRESS_STW_NORTHGATE' ? 'Compliance Admin' : 'Verified Seller';
+      const count = projects.filter(p => p.creatorAddress === addr).length;
+
+      const colors = [
+        'from-indigo-500 to-purple-600',
+        'from-emerald-500 to-teal-600',
+        'from-pink-500 to-rose-600',
+        'from-amber-500 to-orange-600',
+        'from-sky-500 to-blue-600',
+        'from-fuchsia-500 to-pink-600'
+      ];
+      const charCodeSum = addr.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+      const avatarColor = colors[charCodeSum % colors.length];
+
+      const cleanName = name.startsWith('@') ? name.slice(1) : name;
+      const monogram = cleanName.slice(0, 2).toUpperCase();
+
+      return {
+        address: addr,
+        name,
+        role,
+        avatarColor,
+        monogram,
+        projectsCount: count,
+        successRate: 100
+      };
+    });
+
+    if (list.length === 0) {
+      return [
+        {
+          address: 'GB_CREATOR_ADDRESS_STW_NORTHGATE',
+          name: '@creator',
+          role: 'Compliance Admin',
+          avatarColor: 'from-indigo-500 to-purple-600',
+          monogram: 'CR',
+          projectsCount: 12,
+          successRate: 100,
+        },
+        {
+          address: 'GB_CONTRIBUTOR_1_STW_NORTHGATE',
+          name: '@backer1',
+          role: 'Platform VIP Creator',
+          avatarColor: 'from-emerald-500 to-teal-600',
+          monogram: 'B1',
+          projectsCount: 8,
+          successRate: 92,
+        },
+        {
+          address: 'GB_GUEST_ADDRESS_STW_NORTHGATE',
+          name: '@backer2',
+          role: 'Verified Seller',
+          avatarColor: 'from-pink-500 to-rose-600',
+          monogram: 'B2',
+          projectsCount: 5,
+          successRate: 100,
+        }
+      ];
     }
-  ];
+    return list;
+  };
+
+  const topCreators = getDynamicCreators();
 
   const faqItems = [
     {
@@ -114,19 +167,32 @@ export default function Dashboard() {
         const data: ProjectMetadata[] = await res.json();
         setProjects(data);
 
-        // Fetch on-chain states for each project
+        // Fetch on-chain states for each project in parallel
         const states: Record<number, CampaignState> = {};
-        for (const p of data) {
-          try {
-            const state = await getCampaign(p.id);
-            if (state) {
-              states[p.id] = state;
+        await Promise.all(
+          data.map(async (p) => {
+            try {
+              const state = await getCampaign(p.id);
+              if (state) {
+                states[p.id] = state;
+              }
+            } catch (err) {
+              console.error(`Error fetching chain state for project ${p.id}:`, err);
             }
-          } catch (err) {
-            console.error(`Error fetching chain state for project ${p.id}:`, err);
-          }
-        }
+          })
+        );
         setBlockchainStates(states);
+      }
+
+      // Fetch creator applications to resolve friendly names
+      try {
+        const creatorsRes = await fetch('/api/creators');
+        if (creatorsRes.ok) {
+          const creatorsData = await creatorsRes.json();
+          setCreatorsList(creatorsData);
+        }
+      } catch (err) {
+        console.error('Error loading creator applications:', err);
       }
     } catch (err) {
       console.error('Error loading projects:', err);
@@ -154,11 +220,22 @@ export default function Dashboard() {
   const getFilteredProjects = () => {
     let list = [...projects].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
-    // Filter out completed or aborted projects
+    // Filter out completed or aborted projects, and 100% filled or expired crowdfund pools
     list = list.filter(p => {
       const chainState = blockchainStates[p.id];
-      if (chainState && (chainState.is_completed || chainState.is_aborted)) {
-        return false;
+      if (chainState) {
+        if (chainState.is_completed || chainState.is_aborted) {
+          return false;
+        }
+        if ((p.projectType ?? 1) === 1) {
+          if (chainState.pledged_amount >= p.targetAmount) {
+            return false;
+          }
+          const nowSec = Math.floor(Date.now() / 1000);
+          if (chainState.deadline < nowSec) {
+            return false;
+          }
+        }
       }
       return true;
     });
@@ -177,8 +254,19 @@ export default function Dashboard() {
   const totalVolume = Object.values(blockchainStates).reduce((acc, curr) => acc + curr.pledged_amount, 0);
   const activeCampaignsCount = projects.filter(p => {
     const chainState = blockchainStates[p.id];
-    if (chainState && (chainState.is_completed || chainState.is_aborted)) {
-      return false;
+    if (chainState) {
+      if (chainState.is_completed || chainState.is_aborted) {
+        return false;
+      }
+      if ((p.projectType ?? 1) === 1) {
+        if (chainState.pledged_amount >= p.targetAmount) {
+          return false;
+        }
+        const nowSec = Math.floor(Date.now() / 1000);
+        if (chainState.deadline < nowSec) {
+          return false;
+        }
+      }
     }
     return true;
   }).length;
@@ -538,6 +626,8 @@ export default function Dashboard() {
                         case 'Music & Audio': return 'from-orange-950 via-neutral-900 to-red-950';
                         case 'Writing & Literature': return 'from-emerald-950 via-zinc-900 to-teal-950';
                         case 'Video & Animation': return 'from-fuchsia-950 via-slate-900 to-blue-950';
+                        case 'Coordinate': return 'from-sky-950 via-slate-900 to-cyan-950';
+                        case 'Automatic': return 'from-rose-950 via-zinc-900 to-amber-950';
                         default: return 'from-indigo-950 via-zinc-900 to-purple-950';
                       }
                     };
@@ -713,43 +803,52 @@ export default function Dashboard() {
                   key={creator.address}
                   variants={itemVariants}
                   whileHover={{ y: -6, scale: 1.015 }}
-                  className="bg-zinc-900/35 backdrop-blur-xl border border-white/10 p-6 rounded-3xl flex flex-col gap-4 hover-glow-card group relative overflow-hidden shadow-lg hover:border-white/15 transition-all duration-300"
+                  className="glass-card p-6 rounded-3xl flex flex-col gap-4 hover-glow-card group relative overflow-hidden shadow-md dark:shadow-2xl hover:shadow-xl hover:border-indigo-500/20 transition-all duration-300 text-left"
                 >
                   <div className="flex items-center gap-4">
-                    <motion.div
-                      whileHover={{ scale: 1.05, rotate: 2 }}
-                      className={`w-12 h-12 rounded-xl bg-gradient-to-br ${creator.avatarColor} flex items-center justify-center text-white glow-primary border border-white/10 shrink-0 shadow-lg`}
-                    >
-                      <Wallet className="w-6 h-6" />
-                    </motion.div>
+                    <div className="relative">
+                      <motion.div
+                        whileHover={{ scale: 1.05, rotate: 2 }}
+                        className={`w-12 h-12 rounded-xl bg-gradient-to-br ${creator.avatarColor} flex items-center justify-center text-white font-title font-black text-sm border border-white/10 shrink-0 shadow-lg`}
+                      >
+                        {creator.monogram}
+                      </motion.div>
+                      <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-lg bg-zinc-950/80 border border-white/10 flex items-center justify-center shadow-md">
+                        <Wallet className="w-2.5 h-2.5 text-zinc-400" />
+                      </div>
+                    </div>
                     <div className="flex-1 min-w-0">
-                      <h3 className="font-extrabold text-white text-sm truncate flex items-center gap-1.5">
+                      <h3 className="font-extrabold text-white text-sm truncate flex items-center gap-1.5 font-title">
                         {creator.name}
                         <span title="ZK-Identity Verified">
                           <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
                         </span>
                       </h3>
-                      <span className="text-[9px] text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 px-2 py-0.5 rounded-full font-bold">
+                      <span className="text-[9px] text-indigo-600 dark:text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 px-2.5 py-0.5 rounded-full font-bold">
                         {creator.role}
                       </span>
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-2 bg-zinc-950/60 p-3.5 rounded-xl border border-zinc-900/80 text-xs font-sans">
-                    <div>
-                      <span className="block text-[9px] text-zinc-500 uppercase">Active Listings</span>
-                      <span className="font-bold text-white font-mono">{creator.projectsCount} items</span>
+                  <div className="grid grid-cols-2 gap-2.5 text-xs font-sans">
+                    <div className="bg-zinc-950/40 dark:bg-zinc-950/60 p-3 rounded-2xl border border-zinc-900/10 dark:border-zinc-900/80 flex flex-col gap-1 text-left">
+                      <span className="text-[8px] text-zinc-500 dark:text-zinc-500 uppercase tracking-wider font-semibold flex items-center gap-1">
+                        <ShoppingBag className="w-3 h-3 text-indigo-500 dark:text-indigo-400" /> Active Listings
+                      </span>
+                      <span className="font-extrabold text-zinc-800 dark:text-white font-mono text-xs leading-none mt-0.5">{creator.projectsCount} items</span>
                     </div>
-                    <div>
-                      <span className="block text-[9px] text-zinc-500 uppercase">Success Rate</span>
-                      <span className="font-bold text-emerald-400 font-mono">{creator.successRate}%</span>
+                    <div className="bg-zinc-950/40 dark:bg-zinc-950/60 p-3 rounded-2xl border border-zinc-900/10 dark:border-zinc-900/80 flex flex-col gap-1 text-left">
+                      <span className="text-[8px] text-zinc-500 dark:text-zinc-500 uppercase tracking-wider font-semibold flex items-center gap-1">
+                        <Award className="w-3 h-3 text-emerald-500 dark:text-emerald-400" /> Success Rate
+                      </span>
+                      <span className="font-extrabold text-emerald-600 dark:text-emerald-400 font-mono text-xs leading-none mt-0.5">{creator.successRate}%</span>
                     </div>
                   </div>
 
-                  <motion.div whileTap={{ scale: 0.97 }}>
+                  <motion.div whileTap={{ scale: 0.975 }}>
                     <Link
                       href={`/profile/${creator.address}`}
-                      className="w-full bg-zinc-950/80 hover:bg-zinc-900 border border-zinc-850 hover:border-zinc-700 text-zinc-400 hover:text-white font-bold text-xs py-3 rounded-xl text-center transition block"
+                      className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs py-3.5 rounded-2xl text-center transition block shadow-lg shadow-indigo-500/10 hover:shadow-indigo-500/20 hover:scale-[1.01] active:scale-[0.99] cursor-pointer"
                     >
                       View Profile
                     </Link>

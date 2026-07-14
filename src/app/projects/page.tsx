@@ -23,7 +23,9 @@ import {
   Music,
   BookOpen,
   Video,
-  TrendingUp
+  TrendingUp,
+  MapPin,
+  Cpu
 } from 'lucide-react';
 import Link from 'next/link';
 import { motion, Variants } from 'framer-motion';
@@ -81,18 +83,20 @@ export default function ProjectsPage() {
         const data: ProjectMetadata[] = await res.json();
         setProjects(data);
 
-        // Fetch on-chain states for each project
+        // Fetch on-chain states for each project in parallel
         const states: Record<number, CampaignState> = {};
-        for (const p of data) {
-          try {
-            const state = await getCampaign(p.id);
-            if (state) {
-              states[p.id] = state;
+        await Promise.all(
+          data.map(async (p) => {
+            try {
+              const state = await getCampaign(p.id);
+              if (state) {
+                states[p.id] = state;
+              }
+            } catch (err) {
+              console.error(`Error fetching chain state for project ${p.id}:`, err);
             }
-          } catch (err) {
-            console.error(`Error fetching chain state for project ${p.id}:`, err);
-          }
-        }
+          })
+        );
         setBlockchainStates(states);
       }
     } catch (err) {
@@ -115,10 +119,23 @@ export default function ProjectsPage() {
   // Filter and Sort projects
   const filteredAndSortedProjects = projects
     .filter((p) => {
-      // Filter out completed or aborted projects
       const chainState = blockchainStates[p.id];
-      if (chainState && (chainState.is_completed || chainState.is_aborted)) {
-        return false;
+      if (chainState) {
+        // Filter out completed or aborted projects
+        if (chainState.is_completed || chainState.is_aborted) {
+          return false;
+        }
+
+        // For Crowdfund Pools (projectType === 1), filter out if 100% met or expired
+        if ((p.projectType ?? 1) === 1) {
+          if (chainState.pledged_amount >= p.targetAmount) {
+            return false;
+          }
+          const nowSec = Math.floor(Date.now() / 1000);
+          if (chainState.deadline < nowSec) {
+            return false;
+          }
+        }
       }
 
       // Category filter
@@ -184,8 +201,19 @@ export default function ProjectsPage() {
   // Calculate Metrics Summary
   const totalListings = projects.filter(p => {
     const chainState = blockchainStates[p.id];
-    if (chainState && (chainState.is_completed || chainState.is_aborted)) {
-      return false;
+    if (chainState) {
+      if (chainState.is_completed || chainState.is_aborted) {
+        return false;
+      }
+      if ((p.projectType ?? 1) === 1) {
+        if (chainState.pledged_amount >= p.targetAmount) {
+          return false;
+        }
+        const nowSec = Math.floor(Date.now() / 1000);
+        if (chainState.deadline < nowSec) {
+          return false;
+        }
+      }
     }
     return true;
   }).length;
@@ -194,7 +222,11 @@ export default function ProjectsPage() {
     const projectType = p.projectType ?? 1;
     if (projectType !== 1) return false;
     if (!chainState) return true;
-    return !chainState.is_completed && !chainState.is_aborted;
+    if (chainState.is_completed || chainState.is_aborted) return false;
+    if (chainState.pledged_amount >= p.targetAmount) return false;
+    const nowSec = Math.floor(Date.now() / 1000);
+    if (chainState.deadline < nowSec) return false;
+    return true;
   }).length;
   const instantBuyCount = projects.filter(p => {
     if ((p.projectType ?? 1) !== 0) return false;
@@ -214,6 +246,8 @@ export default function ProjectsPage() {
       case 'Music & Audio': return <Music className="w-3.5 h-3.5" />;
       case 'Writing & Literature': return <BookOpen className="w-3.5 h-3.5" />;
       case 'Video & Animation': return <Video className="w-3.5 h-3.5" />;
+      case 'Coordinate': return <MapPin className="w-3.5 h-3.5" />;
+      case 'Automatic': return <Cpu className="w-3.5 h-3.5" />;
       default: return <Sparkles className="w-3.5 h-3.5" />;
     }
   };
@@ -226,6 +260,8 @@ export default function ProjectsPage() {
       case 'Music & Audio': return <Music className={cn} />;
       case 'Writing & Literature': return <BookOpen className={cn} />;
       case 'Video & Animation': return <Video className={cn} />;
+      case 'Coordinate': return <MapPin className={cn} />;
+      case 'Automatic': return <Cpu className={cn} />;
       default: return <Sparkles className={cn} />;
     }
   };
@@ -237,6 +273,8 @@ export default function ProjectsPage() {
       case 'Music & Audio': return 'from-orange-950 via-neutral-900 to-red-950';
       case 'Writing & Literature': return 'from-emerald-950 via-zinc-900 to-teal-950';
       case 'Video & Animation': return 'from-fuchsia-950 via-slate-900 to-blue-950';
+      case 'Coordinate': return 'from-sky-950 via-slate-900 to-cyan-950';
+      case 'Automatic': return 'from-rose-950 via-zinc-900 to-amber-950';
       default: return 'from-indigo-950 via-zinc-900 to-purple-950';
     }
   };
@@ -432,7 +470,7 @@ export default function ProjectsPage() {
 
           {/* Category Tabs */}
           <div className="flex gap-1.5 overflow-x-auto no-scrollbar whitespace-nowrap w-full pb-1 font-sans">
-            {['All', 'Technology', 'Design & Art', 'Music & Audio', 'Writing & Literature', 'Video & Animation'].map((cat) => (
+            {['All', 'Technology', 'Design & Art', 'Music & Audio', 'Writing & Literature', 'Video & Animation', 'Coordinate', 'Automatic'].map((cat) => (
               <button
                 key={cat}
                 onClick={() => setSelectedCategory(cat)}
@@ -786,8 +824,18 @@ export default function ProjectsPage() {
                     <Link href={`/project/${project.id}`} className="absolute inset-0 z-20" />
                     {/* Visual Category Icon & Title */}
                     <div className="flex items-center gap-4 flex-1 min-w-0 relative z-10">
-                      <div className="p-3 rounded-xl bg-zinc-950 border border-zinc-850 shrink-0 group-hover:scale-105 transition duration-300">
-                        {getCategoryIconLarge(project.category)}
+                      <div className="w-14 h-14 rounded-xl bg-zinc-950 border border-zinc-850 shrink-0 group-hover:scale-105 transition duration-300 overflow-hidden flex items-center justify-center">
+                        {project.imageUrl ? (
+                          <img 
+                            src={project.imageUrl.split(',')[0]} 
+                            alt={project.title}
+                            className="w-full h-full object-cover" 
+                          />
+                        ) : (
+                          <div className="p-3 text-zinc-400">
+                            {getCategoryIconLarge(project.category)}
+                          </div>
+                        )}
                       </div>
                       <div className="min-w-0 flex flex-col gap-1">
                         {projectType === 0 && (

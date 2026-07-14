@@ -57,6 +57,8 @@ const getGradientForCategory = (cat: string) => {
     case 'Music & Audio': return 'from-orange-950 via-neutral-900 to-red-950';
     case 'Writing & Literature': return 'from-emerald-950 via-zinc-900 to-teal-950';
     case 'Video & Animation': return 'from-fuchsia-950 via-slate-900 to-blue-950';
+    case 'Coordinate': return 'from-sky-950 via-slate-900 to-cyan-950';
+    case 'Automatic': return 'from-rose-950 via-zinc-900 to-amber-950';
     default: return 'from-indigo-950 via-zinc-900 to-purple-950';
   }
 };
@@ -96,17 +98,20 @@ export default function CreatorProfilePage() {
         );
         setProjects(creatorProjects);
 
+        // Fetch on-chain states for each project in parallel
         const states: Record<number, CampaignState> = {};
-        for (const p of creatorProjects) {
-          try {
-            const state = await getCampaign(p.id);
-            if (state) {
-              states[p.id] = state;
+        await Promise.all(
+          creatorProjects.map(async (p) => {
+            try {
+              const state = await getCampaign(p.id);
+              if (state) {
+                states[p.id] = state;
+              }
+            } catch (err) {
+              console.error(`Error loading state for project ${p.id}:`, err);
             }
-          } catch (err) {
-            console.error(`Error loading state for project ${p.id}:`, err);
-          }
-        }
+          })
+        );
         setBlockchainStates(states);
       }
     } catch (err) {
@@ -400,7 +405,7 @@ export default function CreatorProfilePage() {
                       <div className="p-6 flex-1 flex flex-col justify-between gap-6 relative z-10 bg-zinc-900/40">
                         <div className="flex flex-col gap-2">
                           {projectType === 0 && (
-                            <span className="text-emerald-455 font-mono font-black text-sm">
+                            <span className="text-zinc-800 dark:text-emerald-400 font-mono font-black text-sm">
                               {project.targetAmount} USDC
                             </span>
                           )}

@@ -4,16 +4,16 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { 
-  connectWallet, 
   getMockBalances, 
   resetMockBalances,
   DEFAULT_BALANCES,
   getWalletBalances,
   getNetwork,
   setNetwork,
-  NetworkType
+  NetworkType,
+  getXlmPriceInUsd
 } from '@/lib/stellar';
-import { Wallet, RefreshCw, Sparkles, Check, Info, Coins, ShieldCheck, Menu, X, Sun, Moon, Bell } from 'lucide-react';
+import { Wallet, RefreshCw, Check, Info, Coins, Menu, X, Sun, Moon, Bell, MessageSquare, Send, Loader2, ShoppingBag, ChevronLeft } from 'lucide-react';
 import { 
   getNotifications, 
   markAllNotificationsAsRead, 
@@ -21,6 +21,7 @@ import {
   NotificationItem 
 } from '@/lib/notifications';
 import { motion, AnimatePresence } from 'framer-motion';
+import WalletConnectionModal from './WalletConnectionModal';
 
 export default function Header() {
   const pathname = usePathname();
@@ -48,7 +49,6 @@ export default function Header() {
     }
   };
   const [address, setAddress] = useState<string | null>(null);
-  const [mockMode, setMockModeState] = useState<boolean>(true);
   const [network, setNetworkState] = useState<NetworkType>('simulation');
   const [balances, setBalances] = useState<Record<string, number>>({});
   const [walletDetails, setWalletDetails] = useState<{ xlm: number; usdc: number } | null>(null);
@@ -56,6 +56,9 @@ export default function Header() {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [mobileConnectOpen, setMobileConnectOpen] = useState(false);
+  const [isWalletModalOpen, setIsWalletModalOpen] = useState(false);
+  const [walletTypeState, setWalletTypeState] = useState<string>('freighter');
+  const [xlmPrice, setXlmPrice] = useState<number>(0.11);
 
   // Notifications states
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
@@ -63,12 +66,162 @@ export default function Header() {
   const [notifOpen, setNotifOpen] = useState(false);
   const [toasts, setToasts] = useState<Array<{ id: string; message: string; title: string; type: string }>>([]);
 
+  // Chat States
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chats, setChats] = useState<any[]>([]);
+  const [chatInput, setChatInput] = useState('');
+  const [chatsLoading, setChatsLoading] = useState(true);
+  const [selectedBuyer, setSelectedBuyer] = useState<string>('');
+  const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
+  const [lastReadTime, setLastReadTime] = useState<number>(0);
+
+  const getMyAddress = () => {
+    if (address) return address;
+    if (typeof window !== 'undefined') {
+      let guestAddr = localStorage.getItem('earnly_guest_chat_address');
+      if (!guestAddr) {
+        guestAddr = `Guest_${Math.random().toString(36).substring(2, 6)}`;
+        localStorage.setItem('earnly_guest_chat_address', guestAddr);
+      }
+      return guestAddr;
+    }
+    return '';
+  };
+
+  const fetchChats = async () => {
+    const userAddr = getMyAddress();
+    if (!userAddr) return;
+    try {
+      const res = await fetch(`/api/chats?address=${userAddr}`);
+      if (res.ok) {
+        const data = await res.json();
+        setChats(data);
+      }
+    } catch (err) {
+      console.error('Error fetching global chats:', err);
+    } finally {
+      setChatsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setLastReadTime(Number(localStorage.getItem('earnly_last_chat_read_time') || 0));
+    }
+  }, [chatOpen]);
+
+  const getUnreadChatCount = () => {
+    const myAddr = getMyAddress().toLowerCase();
+    return chats.filter(
+      c => c.sender && c.sender.toLowerCase() !== myAddr && new Date(c.timestamp).getTime() > lastReadTime
+    ).length;
+  };
+
+  const toggleChatConsole = () => {
+    const nextState = !chatOpen;
+    setChatOpen(nextState);
+    if (nextState) {
+      const now = Date.now();
+      setLastReadTime(now);
+      localStorage.setItem('earnly_last_chat_read_time', String(now));
+    }
+  };
+
+  const handleSendChat = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!chatInput.trim() || selectedProjectId === null || !selectedBuyer) return;
+
+    const myAddress = getMyAddress();
+    const activeThread = chats.find(c => c.projectId === selectedProjectId && c.buyerAddress === selectedBuyer);
+    const creatorAddress = activeThread?.projectDetails?.creatorAddress || '';
+    const isCreator = myAddress.toLowerCase() === creatorAddress.toLowerCase();
+
+    const originalInput = chatInput;
+    setChatInput('');
+
+    try {
+      const res = await fetch(`/api/projects/${selectedProjectId}/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sender: myAddress,
+          message: originalInput,
+          isCreator,
+          buyerAddress: selectedBuyer
+        })
+      });
+
+      if (res.ok) {
+        fetchChats();
+      } else {
+        setChatInput(originalInput);
+        alert('Failed to send message.');
+      }
+    } catch (err) {
+      setChatInput(originalInput);
+      console.error('Error sending message:', err);
+    }
+  };
+
+  const getInboxThreads = () => {
+    const threadsMap: Record<string, {
+      projectId: number;
+      buyerAddress: string;
+      lastMessage: any;
+      projectDetails: any;
+    }> = {};
+
+    chats.forEach((chat) => {
+      if (!chat.buyerAddress) return;
+      const key = `${chat.projectId}-${chat.buyerAddress}`;
+      if (!threadsMap[key] || new Date(chat.timestamp) > new Date(threadsMap[key].lastMessage.timestamp)) {
+        threadsMap[key] = {
+          projectId: chat.projectId,
+          buyerAddress: chat.buyerAddress,
+          lastMessage: chat,
+          projectDetails: chat.projectDetails
+        };
+      }
+    });
+
+    return Object.values(threadsMap).sort(
+      (a, b) => new Date(b.lastMessage.timestamp).getTime() - new Date(a.lastMessage.timestamp).getTime()
+    );
+  };
+
+  useEffect(() => {
+    fetchChats();
+    const interval = setInterval(fetchChats, 5000);
+    return () => clearInterval(interval);
+  }, [address]);
+
+  useEffect(() => {
+    const handleOpenGlobalChat = (e: Event) => {
+      const customEvent = e as CustomEvent<{ projectId: number; buyerAddress: string }>;
+      const { projectId, buyerAddress } = customEvent.detail;
+      
+      setSelectedProjectId(projectId);
+      setSelectedBuyer(buyerAddress);
+      setChatOpen(true);
+      
+      const now = Date.now();
+      setLastReadTime(now);
+      localStorage.setItem('earnly_last_chat_read_time', String(now));
+    };
+
+    window.addEventListener('openGlobalChat', handleOpenGlobalChat);
+    return () => window.removeEventListener('openGlobalChat', handleOpenGlobalChat);
+  }, []);
+
   const fetchWalletDetails = async (addr: string | null) => {
     if (!addr) return;
     try {
       setLoadingBalance(true);
       const details = await getWalletBalances(addr);
       setWalletDetails(details);
+      if (details && details.xlm > 0) {
+        setXlmPrice(details.usdc / details.xlm);
+      }
     } catch (err) {
       console.error('Error loading wallet details in header:', err);
     } finally {
@@ -80,13 +233,24 @@ export default function Header() {
     // Initial load
     const activeNet = getNetwork();
     setNetworkState(activeNet);
-    setMockModeState(activeNet === 'simulation');
     
     const savedAddr = localStorage.getItem('earnly_wallet_address');
     if (savedAddr) {
       setAddress(savedAddr);
       fetchWalletDetails(savedAddr);
     }
+
+    const loadPrice = async () => {
+      try {
+        const livePrice = await getXlmPriceInUsd();
+        setXlmPrice(livePrice);
+      } catch {}
+    };
+    loadPrice();
+    
+    const savedType = localStorage.getItem('earnly_wallet_type') || 'freighter';
+    setWalletTypeState(savedType);
+
     const initBalances = async () => {
       const mockBals = await getMockBalances();
       setBalances(mockBals);
@@ -128,76 +292,80 @@ export default function Header() {
       setUnreadCount(allNotifs.filter(n => !n.read).length);
     };
 
+    const handleWalletChange = () => {
+      const savedAddr = localStorage.getItem('earnly_wallet_address');
+      setAddress(savedAddr);
+      const savedType = localStorage.getItem('earnly_wallet_type') || 'freighter';
+      setWalletTypeState(savedType);
+      if (savedAddr) {
+        fetchWalletDetails(savedAddr);
+      } else {
+        setWalletDetails(null);
+      }
+    };
+
     window.addEventListener('earnly_new_notification', handleNewNotif);
     window.addEventListener('earnly_notifications_updated', handleNotifsUpdated);
+    window.addEventListener('walletChange', handleWalletChange);
 
     return () => {
       window.removeEventListener('earnly_new_notification', handleNewNotif);
       window.removeEventListener('earnly_notifications_updated', handleNotifsUpdated);
+      window.removeEventListener('walletChange', handleWalletChange);
     };
   }, []);
 
   const handleNetworkConnect = async (net: NetworkType) => {
     setNetwork(net);
     setNetworkState(net);
-    setMockModeState(net === 'simulation');
     
     if (net !== 'simulation') {
-      const pk = await connectWallet();
-      if (pk) {
-        setAddress(pk);
-        localStorage.setItem('earnly_wallet_address', pk);
-        fetchWalletDetails(pk);
-        setDropdownOpen(false);
-      } else {
-        alert('Failed to connect Freighter Wallet.');
-        setAddress(null);
-        localStorage.removeItem('earnly_wallet_address');
-      }
+      localStorage.setItem('earnly_network', net);
+      // Disconnect active wallet first to avoid wrong addresses across networks
+      setAddress(null);
+      localStorage.removeItem('earnly_wallet_address');
+      localStorage.removeItem('earnly_wallet_type');
+      localStorage.removeItem('earnly_secret_key');
+      setDropdownOpen(false);
+      setIsWalletModalOpen(true);
     } else {
       const defaultAddr = 'GB_CONTRIBUTOR_1_STW_NORTHGATE';
       setAddress(defaultAddr);
       localStorage.setItem('earnly_wallet_address', defaultAddr);
+      localStorage.setItem('earnly_wallet_type', 'simulation');
       fetchWalletDetails(defaultAddr);
       setDropdownOpen(false);
+      window.location.reload();
     }
-    window.location.reload();
   };
 
   const handleNetworkChange = async (net: NetworkType) => {
     setNetwork(net);
     setNetworkState(net);
-    setMockModeState(net === 'simulation');
     if (net !== 'simulation') {
-      const pk = await connectWallet();
-      if (pk) {
-        setAddress(pk);
-        localStorage.setItem('earnly_wallet_address', pk);
-        fetchWalletDetails(pk);
-      } else {
-        alert('Failed to connect Freighter Wallet.');
-        setAddress(null);
-        localStorage.removeItem('earnly_wallet_address');
-      }
+      localStorage.setItem('earnly_network', net);
+      setAddress(null);
+      localStorage.removeItem('earnly_wallet_address');
+      localStorage.removeItem('earnly_wallet_type');
+      localStorage.removeItem('earnly_secret_key');
+      setDropdownOpen(false);
+      setIsWalletModalOpen(true);
     } else {
       const defaultAddr = 'GB_CONTRIBUTOR_1_STW_NORTHGATE';
       setAddress(defaultAddr);
       localStorage.setItem('earnly_wallet_address', defaultAddr);
+      localStorage.setItem('earnly_wallet_type', 'simulation');
+      window.location.reload();
     }
-    window.location.reload();
   };
 
-  const connectLiveWallet = async () => {
-    const pk = await connectWallet();
-    if (pk) {
-      setAddress(pk);
-      localStorage.setItem('earnly_wallet_address', pk);
-      fetchWalletDetails(pk);
+
+  const handleConnectClick = () => {
+    const net = getNetwork();
+    if (net !== 'simulation') {
+      setIsWalletModalOpen(true);
     } else {
-      alert('Failed to connect Freighter Wallet.');
-      setAddress(null);
-      localStorage.removeItem('earnly_wallet_address');
-      window.location.reload();
+      toggleDropdown();
     }
   };
 
@@ -235,7 +403,8 @@ export default function Header() {
   };
 
   return (
-    <header className="sticky top-0 z-50 w-full glass-nav px-3 sm:px-4 md:px-8 py-3 flex items-center justify-between gap-2">
+    <>
+      <header className="sticky top-0 z-50 w-full glass-nav px-3 sm:px-4 md:px-8 py-3 flex items-center justify-between gap-2">
       <div className="flex items-center gap-3 sm:gap-6 min-w-0">
         <Link href="/" className="flex items-center gap-2 sm:gap-2.5 font-bold text-lg sm:text-xl tracking-tight text-white hover:opacity-95 transition flex-shrink-0">
           <img 
@@ -323,7 +492,7 @@ export default function Header() {
             title="Notifications"
           >
             <Bell className="w-4 h-4" />
-            {unreadCount > 0 && (
+            {address && unreadCount > 0 && (
               <span className="absolute -top-1 -right-1 w-4 h-4 bg-indigo-500 text-white rounded-full text-[9px] font-black flex items-center justify-center border border-zinc-950 animate-pulse font-mono">
                 {unreadCount}
               </span>
@@ -336,7 +505,7 @@ export default function Header() {
                 <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-1.5 font-sans">
                   <Bell className="w-3.5 h-3.5 text-indigo-400" /> Notifications
                 </h4>
-                {notifications.length > 0 && (
+                {address && notifications.length > 0 && (
                   <button
                     onClick={() => {
                       clearNotifications();
@@ -351,7 +520,12 @@ export default function Header() {
               </div>
 
               <div className="flex flex-col gap-2 overflow-y-auto max-h-[40vh] no-scrollbar">
-                {notifications.length === 0 ? (
+                {!address ? (
+                  <div className="text-center py-8 text-zinc-500 text-xs font-medium font-sans flex flex-col items-center gap-2">
+                    <Info className="w-5 h-5 text-zinc-650" />
+                    Connect your wallet to see recent alerts.
+                  </div>
+                ) : notifications.length === 0 ? (
                   <div className="text-center py-6 text-zinc-500 text-xs font-medium font-sans">
                     No transactions or alerts recorded.
                   </div>
@@ -393,7 +567,7 @@ export default function Header() {
                 )}
               </div>
 
-              {notifications.length > 0 && (
+              {address && notifications.length > 0 && (
                 <div className="pt-2 border-t border-zinc-850/60 mt-1 flex justify-center">
                   <Link
                     href="/profile?tab=transaction-history"
@@ -407,6 +581,20 @@ export default function Header() {
             </div>
           )}
         </div>
+
+        {/* Chat Icon Button */}
+        <button
+          onClick={toggleChatConsole}
+          className="p-2.5 rounded-lg bg-zinc-900 border border-zinc-800 hover:border-zinc-700 text-zinc-400 hover:text-white transition flex items-center justify-center shrink-0 relative animate-reveal-up"
+          title="Chat Console"
+        >
+          <MessageSquare className="w-4 h-4" />
+          {getUnreadChatCount() > 0 && (
+            <span className="absolute -top-1 -right-1 w-4 h-4 bg-indigo-500 text-white rounded-full text-[9px] font-black flex items-center justify-center border border-zinc-950 animate-pulse font-mono bg-indigo-600">
+              {getUnreadChatCount()}
+            </span>
+          )}
+        </button>
 
         {/* Account Details & Switcher */}
         <div className="relative">
@@ -427,7 +615,7 @@ export default function Header() {
             </button>
           ) : (
             <button
-              onClick={toggleDropdown}
+              onClick={handleConnectClick}
               className="flex items-center gap-1.5 bg-indigo-650 hover:bg-indigo-750 border border-indigo-500/20 px-4 py-2 rounded-lg text-xs md:text-sm font-semibold text-white transition glow-primary"
             >
               <Wallet className="w-3.5 h-3.5" />
@@ -521,7 +709,7 @@ export default function Header() {
                         </div>
 
                         <div className="text-[9px] text-zinc-555 border-t border-zinc-900/60 pt-2 flex items-center justify-between font-mono">
-                          <span>Rate: 1 XLM ≈ 0.11 USD</span>
+                          <span>Rate: 1 XLM ≈ {xlmPrice.toFixed(4)} USD</span>
                           <span>Fee: 0 XLM (Free)</span>
                         </div>
                       </div>
@@ -578,15 +766,12 @@ export default function Header() {
                     <div className="flex flex-col gap-2 text-xs text-zinc-400">
                       <div className="flex items-start gap-2 bg-zinc-950 p-2.5 rounded-lg border border-zinc-800/80">
                         <Info className="w-4 h-4 text-indigo-400 shrink-0 mt-0.5" />
-                        {network === 'mainnet' ? (
-                          <p>
-                            Connected to **Stellar Mainnet** via Freighter wallet.
-                          </p>
-                        ) : (
-                          <p>
-                            Connected to **Stellar Testnet** via Freighter wallet.
-                          </p>
-                        )}
+                        <p>
+                          Connected to <strong>Stellar {network === 'mainnet' ? 'Mainnet' : 'Testnet'}</strong> via {
+                            walletTypeState === 'manual' ? 'Secret Key import' :
+                            walletTypeState === 'kit' ? 'Wallets Kit' : 'Freighter wallet'
+                          }.
+                        </p>
                       </div>
                     </div>
                   )}
@@ -614,6 +799,15 @@ export default function Header() {
                         Mainnet
                       </button>
                     </div>
+
+                    <Link
+                      href="/wallet"
+                      onClick={() => setDropdownOpen(false)}
+                      className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold p-2.5 rounded-lg text-xs mt-3 mb-1.5 transition text-center flex items-center justify-center gap-1.5 shadow-md shadow-indigo-650/15"
+                    >
+                      <Wallet className="w-3.5 h-3.5" />
+                      <span>Lihat Lumen Wallet</span>
+                    </Link>
 
                     <button
                       onClick={() => {
@@ -696,6 +890,15 @@ export default function Header() {
               <div className="bg-zinc-900 border border-zinc-800 p-2.5 rounded-lg text-xs font-mono text-zinc-300 break-all">
                 {address}
               </div>
+              <Link
+                href="/wallet"
+                onClick={() => setMobileMenuOpen(false)}
+                className="w-full bg-indigo-650 hover:bg-indigo-750 text-white font-bold py-2.5 rounded-lg text-xs transition text-center flex items-center justify-center gap-1.5 shadow-md shadow-indigo-650/10"
+              >
+                <Wallet className="w-3.5 h-3.5" />
+                <span>Lihat Lumen Wallet</span>
+              </Link>
+
               <button
                 onClick={() => {
                   setAddress(null);
@@ -780,6 +983,232 @@ export default function Header() {
           ))}
         </AnimatePresence>
       </div>
+
     </header>
-  );
+
+      {/* Global Live Chat Drawer (ZeusX Style) */}
+      <AnimatePresence>
+        {chatOpen && (
+          <>
+            {/* Backdrop Blur */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 0.6 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setChatOpen(false)}
+              className="fixed inset-0 bg-black z-[9990] backdrop-blur-sm"
+            />
+
+            {/* Chat Container Drawer */}
+            <motion.div
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 220 }}
+              className="fixed right-0 top-0 bottom-0 w-full max-w-sm md:max-w-3xl bg-zinc-950 border-l border-zinc-850 shadow-2xl z-[9991] flex flex-col overflow-hidden text-white"
+            >
+              {/* Header */}
+              <div className="p-4 border-b border-zinc-855 flex items-center justify-between bg-zinc-900/40 shrink-0">
+                <div className="flex items-center gap-2">
+                  <MessageSquare className="w-5 h-5 text-indigo-400" />
+                  <span className="text-xs font-black uppercase tracking-wider font-mono">Chat</span>
+                </div>
+                <button
+                  onClick={() => setChatOpen(false)}
+                  className="p-1.5 hover:bg-zinc-850 rounded-lg text-zinc-400 hover:text-white transition cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Body: Split View on MD/LG, Stacked on Mobile */}
+              <div className="flex-1 flex flex-col md:flex-row divide-y md:divide-y-0 md:divide-x divide-zinc-850/60 overflow-hidden">
+                {/* Left Panel: Inbox / Conversations List */}
+                <div className={`w-full md:w-[260px] flex flex-col bg-zinc-950 ${selectedProjectId !== null ? 'hidden md:flex' : 'flex'}`}>
+                  <div className="p-3 border-b border-zinc-900/50 flex items-center justify-between">
+                    <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Inbox Threads</span>
+                  </div>
+                  <div className="flex-1 overflow-y-auto no-scrollbar p-2 flex flex-col gap-1 max-h-[calc(100vh-120px)]">
+                    {chatsLoading ? (
+                      <div className="flex justify-center py-8">
+                        <Loader2 className="w-5 h-5 text-indigo-500 animate-spin" />
+                      </div>
+                    ) : getInboxThreads().length === 0 ? (
+                      <div className="text-center py-16 text-zinc-650 text-xs italic font-sans">
+                        No messages yet.
+                      </div>
+                    ) : (
+                      getInboxThreads().map((thread) => {
+                        const isSeller = thread.projectDetails?.creatorAddress && thread.projectDetails.creatorAddress.toLowerCase() === getMyAddress().toLowerCase();
+                        const partnerLabel = isSeller
+                          ? (thread.buyerAddress && thread.buyerAddress.startsWith('Guest_') ? `Guest (${thread.buyerAddress.split('_')[1]})` : getFriendlyName(thread.buyerAddress))
+                          : `Seller (${getFriendlyName(thread.projectDetails?.creatorAddress)})`;
+
+                        const isActive = selectedProjectId === thread.projectId && selectedBuyer && thread.buyerAddress && selectedBuyer.toLowerCase() === thread.buyerAddress.toLowerCase();
+                        const time = new Date(thread.lastMessage.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+                        return (
+                          <button
+                            key={`${thread.projectId}-${thread.buyerAddress}`}
+                            onClick={() => {
+                              setSelectedProjectId(thread.projectId);
+                              setSelectedBuyer(thread.buyerAddress);
+                              setChatInput('');
+                            }}
+                            className={`w-full text-left p-3 rounded-xl transition flex flex-col gap-1.5 border cursor-pointer ${
+                              isActive
+                                ? 'bg-indigo-600/15 border-indigo-500/30 text-white'
+                                : 'hover:bg-zinc-900/40 border-transparent text-zinc-400'
+                            }`}
+                          >
+                            <div className="flex justify-between items-center w-full">
+                              <span className="text-xs font-bold truncate pr-2 max-w-[130px]">
+                                {partnerLabel}
+                              </span>
+                              <span className="text-[9px] text-zinc-600 font-mono shrink-0">{time}</span>
+                            </div>
+
+                            {/* Item Reference Card inside sidebar thread */}
+                            {thread.projectDetails && (
+                              <div className="flex items-center gap-2 p-1.5 rounded-lg bg-zinc-950/80 border border-zinc-900 w-full">
+                                <div className="w-6 h-6 rounded bg-zinc-900 flex items-center justify-center text-[10px] text-indigo-400 font-bold uppercase overflow-hidden shrink-0">
+                                  {thread.projectDetails.imageUrl ? (
+                                    <img src={thread.projectDetails.imageUrl.split(',')[0]} className="w-full h-full object-cover" />
+                                  ) : (
+                                    <ShoppingBag className="w-3.5 h-3.5 text-zinc-500" />
+                                  )}
+                                </div>
+                                <div className="flex flex-col min-w-0 leading-tight">
+                                  <span className="text-[10px] font-bold text-zinc-300 truncate w-full">{thread.projectDetails.title}</span>
+                                  <span className="text-[9px] text-indigo-400 font-mono font-bold">{thread.projectDetails.price} USDC</span>
+                                </div>
+                              </div>
+                            )}
+
+                            <span className="text-[10px] text-zinc-500 truncate w-full font-sans leading-relaxed">
+                              {thread.lastMessage.message}
+                            </span>
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+
+                {/* Right Panel: Conversation Feed */}
+                <div className={`flex-1 flex flex-col bg-zinc-950/40 ${selectedProjectId === null ? 'hidden md:flex' : 'flex'}`}>
+                  {selectedProjectId !== null && selectedBuyer ? (
+                    <>
+                      {/* Thread Header with back option on mobile */}
+                      <div className="p-3.5 border-b border-zinc-900 flex items-center gap-3 bg-zinc-900/20 shrink-0">
+                        <button
+                          onClick={() => {
+                            setSelectedProjectId(null);
+                            setSelectedBuyer('');
+                          }}
+                          className="md:hidden p-1 hover:bg-zinc-800 rounded text-zinc-400 hover:text-white"
+                        >
+                          <ChevronLeft className="w-4 h-4" />
+                        </button>
+                        
+                        {/* Reference Item Top Header ("menandakan item") */}
+                        {(() => {
+                          const activeThread = chats.find(c => c.projectId === selectedProjectId && c.buyerAddress === selectedBuyer);
+                          if (!activeThread?.projectDetails) return null;
+                          return (
+                            <div className="flex items-center gap-3 w-full min-w-0">
+                              <div className="w-9 h-9 rounded bg-zinc-955 border border-zinc-900 flex items-center justify-center shrink-0 overflow-hidden">
+                                {activeThread.projectDetails.imageUrl ? (
+                                  <img src={activeThread.projectDetails.imageUrl.split(',')[0]} className="w-full h-full object-cover" />
+                                ) : (
+                                  <ShoppingBag className="w-4 h-4 text-indigo-450" />
+                                )}
+                              </div>
+                              <div className="flex flex-col min-w-0">
+                                <span className="text-xs font-bold text-white truncate max-w-[200px] sm:max-w-none">{activeThread.projectDetails.title}</span>
+                                <div className="flex items-center gap-2 text-[10px] text-zinc-450 leading-none">
+                                  <span className="text-indigo-400 font-mono font-bold">{activeThread.projectDetails.price} USDC</span>
+                                  <span>•</span>
+                                  <span>To: {selectedBuyer.startsWith('Guest_') ? `Guest (${selectedBuyer.split('_')[1]})` : getFriendlyName(selectedBuyer)}</span>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })()}
+                      </div>
+
+                      {/* Chat Messages */}
+                      <div className="flex-1 p-4 flex flex-col gap-3.5 overflow-y-auto no-scrollbar font-sans max-h-[calc(100vh-180px)]">
+                        {chats
+                          .filter((c) => c.projectId === selectedProjectId && c.buyerAddress.toLowerCase() === selectedBuyer.toLowerCase())
+                          .map((chat) => {
+                            const isSenderMe = chat.sender.toLowerCase() === getMyAddress().toLowerCase();
+                            const time = new Date(chat.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+                            return (
+                              <div
+                                key={chat.id}
+                                className={`flex flex-col gap-1 max-w-[85%] ${
+                                  isSenderMe ? 'self-end items-end' : 'self-start items-start'
+                                }`}
+                              >
+                                <span className="text-[8px] text-zinc-500 px-1 uppercase font-bold tracking-wider">
+                                  {isSenderMe ? 'You' : chat.isCreator ? 'Seller' : 'Buyer'}
+                                </span>
+                                <div
+                                  className={`p-3 rounded-2xl text-xs break-words font-sans leading-relaxed shadow-sm ${
+                                    isSenderMe
+                                      ? 'bg-indigo-600 text-white rounded-tr-none border border-indigo-500/20'
+                                      : 'bg-zinc-900/80 text-zinc-350 border border-zinc-850 rounded-tl-none'
+                                  }`}
+                                >
+                                  {chat.message}
+                                </div>
+                                <span className="text-[9px] text-zinc-650 font-mono px-1">{time}</span>
+                              </div>
+                            );
+                          })}
+                      </div>
+
+                      {/* Input */}
+                      <form onSubmit={handleSendChat} className="p-4 border-t border-zinc-850 bg-zinc-950/20 flex gap-2 items-center font-sans shrink-0">
+                        <input
+                          type="text"
+                          placeholder="Type your message..."
+                          value={chatInput}
+                          onChange={(e) => setChatInput(e.target.value)}
+                          className="flex-1 bg-zinc-950 border border-zinc-850 hover:border-zinc-800 focus:border-indigo-650 text-zinc-200 text-xs rounded-xl p-3 outline-none transition font-medium"
+                          maxLength={500}
+                        />
+                        <button
+                          type="submit"
+                          disabled={!chatInput.trim()}
+                          className="p-3 bg-indigo-600 hover:bg-indigo-750 disabled:bg-zinc-900 disabled:text-zinc-700 text-white rounded-xl transition duration-300 shadow-md flex items-center justify-center shrink-0 cursor-pointer"
+                        >
+                          <Send className="w-4 h-4" />
+                        </button>
+                      </form>
+                    </>
+                  ) : (
+                    <div className="flex-1 flex flex-col items-center justify-center text-center p-8 gap-2.5">
+                      <MessageSquare className="w-10 h-10 text-zinc-755 animate-pulse" />
+                      <h4 className="text-xs font-bold text-zinc-450 uppercase tracking-wider">Inbox Thread</h4>
+                      <p className="text-xs text-zinc-600 max-w-[240px] font-sans">
+                        Select an active thread from the sidebar inbox list to view chat and reply.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      <WalletConnectionModal 
+        isOpen={isWalletModalOpen} 
+        onClose={() => setIsWalletModalOpen(false)} 
+      />
+    </>
+);
 }
